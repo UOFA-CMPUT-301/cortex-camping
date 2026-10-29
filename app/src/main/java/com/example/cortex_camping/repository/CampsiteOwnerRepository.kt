@@ -1,0 +1,43 @@
+package com.example.cortex_camping.repository
+
+import androidx.compose.runtime.mutableStateListOf
+import com.example.cortex_camping.model.CampsiteOwner
+import com.google.firebase.Firebase
+import com.google.firebase.firestore.firestore
+
+class CampsiteOwnerRepository {
+    private val db = Firebase.firestore
+    private val ownersRef = db.collection("owners")
+    private val _owners = mutableStateListOf<CampsiteOwner>()
+
+    val owners: List<CampsiteOwner>
+        get() = _owners
+
+    fun saveOrUpdateOwner(deviceId: String, owner: CampsiteOwner) {
+        // generates Firestore document with id based on Android device id
+        val ownerWithId = owner.copy(id = deviceId)
+        ownersRef.document(deviceId).set(ownerWithId)
+    }
+
+    fun editOwnerName(owner: CampsiteOwner) {
+        // we don't allow editing IDs, but we do allow editing names i guess lol
+        ownersRef.document(owner.name).update("name", owner.name)
+    }
+
+    init {
+        ownersRef.addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                return@addSnapshotListener
+            }
+
+            _owners.clear()
+
+            snapshot?.documents?.forEach { document ->
+                val owner = document.toObject(CampsiteOwner::class.java)
+                if (owner != null) {
+                    _owners.add(owner.copy(id = document.id))
+                }
+            }
+        }
+    }
+}
