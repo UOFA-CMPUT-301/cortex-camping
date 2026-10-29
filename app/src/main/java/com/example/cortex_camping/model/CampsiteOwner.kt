@@ -1,20 +1,8 @@
 package com.example.cortex_camping.model
 
-import java.lang.Boolean.FALSE
-import java.time.LocalDate
-
 // we will connect this to firebase later at some point
 
-class CampsiteOwner(
+data class CampsiteOwner(
     val id: String = "",
-    val name: String = "",
-    private val campsites: MutableList<Campsite> = mutableListOf() // CampsiteOwner can have 0 or more campsites
-) {
-    fun listCampsite(campsite: Campsite) {
-        campsites.add(campsite)
-    }
-
-    fun getCampsites(): List<Campsite> { // returns a read-only list of campsites (we might not need this)
-        return campsites.toList()
-    }
-}
+    val name: String = ""
+)
