@@ -17,18 +17,10 @@ class EntrantRepository {
     val entrants: List<Entrant>
         get() = _entrants
 
-    fun addEntrant(entrant: Entrant) {
-        // server-side addition of entrant to Firestore
-        val document = entrantsRef.document()
-        val entrantWithId = entrant.copy(id = document.id)
-        document.set(entrantWithId)
-    }
-
-    fun editEntrant(entrant: Entrant) {
-        // to allow users to edit their own information (minus id)
-        if (entrant.id.isNotEmpty()) {
-            entrantsRef.document(entrant.id).set(entrant)
-        }
+    fun saveOrUpdateEntrant(deviceId: String, entrant: Entrant) {
+        // now generates a Firestore document with id based on Android device ID
+        val entrantWithId = entrant.copy(id = deviceId)
+        entrantsRef.document(deviceId).set(entrantWithId)
     }
 
     fun deleteEntrant(entrantId: String) {
