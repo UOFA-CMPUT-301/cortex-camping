@@ -18,14 +18,24 @@ class EntrantRepository {
         get() = _entrants
 
     fun addEntrant(entrant: Entrant) {
+        // server-side addition of entrant to Firestore
         val document = entrantsRef.document()
         val entrantWithId = entrant.copy(id = document.id)
         document.set(entrantWithId)
     }
 
-    fun editEntrantName(entrant: Entrant) {
-        // again, we won't be allowing editing IDs, but we'll allow editing names
-        entrantsRef.document(entrant.id).update("name", entrant.name)
+    fun editEntrant(entrant: Entrant) {
+        // to allow users to edit their own information (minus id)
+        if (entrant.id.isNotEmpty()) {
+            entrantsRef.document(entrant.id).set(entrant)
+        }
+    }
+
+    fun deleteEntrant(entrantId: String) {
+        // to allow entrants to delete their own profiles
+        if (entrantId.isNotBlank()) {
+            entrantsRef.document(entrantId).delete()
+        }
     }
 
     fun cancelReservation(entrantId: String, bookingId: String) {
