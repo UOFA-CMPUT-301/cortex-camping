@@ -23,8 +23,8 @@ class CampsiteRepository {
 
     fun editCampsite(campsite: Campsite) {
         campsitesRef
-            .document(campsite.campsiteId) // each campsite has a unique id
-            .set(campsite) // saves the entire updated Campsite object to Firestore
+            .document(campsite.campsiteId) // each campsite has a unique id, the id will not be changed
+            .set(campsite) // overwrites (effectively updating) the entire updated Campsite object to Firestore
     }
 
     fun getCampsitesByOwner(

@@ -1,6 +1,7 @@
 package com.example.cortex_camping.model
 
-// we will connect this to firebase later at some point
+// might have to make this more clear, we'll see
+// currently CampsiteOwnerRepository.kt and Campsite.kt kind of handles everything lol
 
 data class CampsiteOwner(
     val id: String = "",
