@@ -19,4 +19,20 @@ data class AvailabilitySchedule(
                 !date.isAfter(availableUntil) &&
                 date !in unavailableDates
     }
+
+    fun isReservationAvailable(
+        // takes in a reservation object, which has bookingID, campsiteID, userID, checkIn, checkOut
+        reservation: Reservation
+    ): Boolean {
+        // runs a while loop from checkIn to checkOut date and
+        // returns false if at least one of the dates within that timeframe is not available, otherwise true
+        var date = reservation.checkIn
+        while (date.isBefore(reservation.checkOut)) {
+            if(!isAvailable(date)) {
+                return false
+            }
+            date = date.plusDays(1) // this increments the date for the while loop to run
+        }
+        return true
+    }
 }
