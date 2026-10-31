@@ -18,19 +18,19 @@ jobs:
       outcome: ${{ steps.test.outcome }}
       summary: ${{ steps.summary.outputs.summary }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 25
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: /usr/local/lib/android/sdk/platforms/android-37*
           key: android-sdk-platform-37
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
         with:
           cache-read-only: false
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
@@ -38,7 +38,7 @@ jobs:
       - name: Run unit tests
         id: test
         continue-on-error: true
-        run: bash ./gradlew :app:testDebugUnitTest -x processDebugGoogleServices
+        run: ./gradlew :app:testDebugUnitTest -x processDebugGoogleServices
 
       - name: Summarize results
         id: summary
@@ -60,7 +60,7 @@ jobs:
               print("summary=no test results")
           EOF
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: tests
@@ -75,27 +75,27 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 25
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: /usr/local/lib/android/sdk/platforms/android-37*
           key: android-sdk-platform-37
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
         with:
           cache-read-only: false
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
 
       - name: Generate Dokka docs
-        run: bash ./gradlew :app:dokkaGenerate -x processReleaseGoogleServices
+        run: ./gradlew :app:dokkaGenerate -x processReleaseGoogleServices
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: docs
           path: app/build/dokka/html
@@ -114,13 +114,13 @@ jobs:
       TEST_OUTCOME: ${{ needs.test.outputs.outcome }}
       TEST_SUMMARY: ${{ needs.test.outputs.summary }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         continue-on-error: true
         with:
           name: docs
           path: artifacts/docs
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         continue-on-error: true
         with:
           name: tests
