@@ -10,5 +10,8 @@ data class Campsite (
     val price: Double, // price per night, in Canadian
     val imageUrl: String? = null, // optional image url of the campsite
     val availability: AvailabilitySchedule, // AvailabilitySchedule is its own class
-    val rating: Double = 0.0 // campsite rating defaults to 0.0
+    val rating: Double = 0.0, // campsite rating defaults to 0.0
+    val ratingCount: Int = 0, // how many reviews the rating is averaged from
+    val location: String = "", // address shown on cards, e.g. "Big Bear Lake, CA"
+    val rulesUrl: String = "" // link to the owner's rules and policies
 )
