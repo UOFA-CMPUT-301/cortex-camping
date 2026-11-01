@@ -1,0 +1,203 @@
+name: CI
+
+on:
+  push:
+    branches-ignore: [gh-pages]
+  pull_request:
+    types: [opened, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  test:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      outcome: ${{ steps.test.outcome }}
+      summary: ${{ steps.summary.outputs.summary }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - uses: actions/cache@v6
+        with:
+          path: /usr/local/lib/android/sdk/platforms/android-37*
+          key: android-sdk-platform-37
+
+      - uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: false
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+
+      - name: Run unit tests
+        id: test
+        continue-on-error: true
+        run: ./gradlew :app:testDebugUnitTest -x processDebugGoogleServices
+
+      - name: Summarize results
+        id: summary
+        if: always()
+        run: |
+          python3 - <<'EOF' >> "$GITHUB_OUTPUT"
+          import glob
+          import xml.etree.ElementTree as ET
+
+          tests = failures = skipped = 0
+          for path in glob.glob("app/build/test-results/testDebugUnitTest/*.xml"):
+              root = ET.parse(path).getroot()
+              tests += int(root.get("tests", 0))
+              failures += int(root.get("failures", 0)) + int(root.get("errors", 0))
+              skipped += int(root.get("skipped", 0))
+          if tests:
+              print(f"summary={tests} tests, {failures} failed, {skipped} skipped")
+          else:
+              print("summary=no test results")
+          EOF
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: tests
+          path: app/build/reports/tests/testDebugUnitTest
+          if-no-files-found: ignore
+
+      - name: Fail if tests failed
+        if: steps.test.outcome == 'failure'
+        run: exit 1
+
+  docs:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - uses: actions/cache@v6
+        with:
+          path: /usr/local/lib/android/sdk/platforms/android-37*
+          key: android-sdk-platform-37
+
+      - uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: false
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+
+      - name: Generate Dokka docs
+        run: ./gradlew :app:dokkaGenerate -x processReleaseGoogleServices
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: docs
+          path: app/build/dokka/html
+
+  publish:
+    needs: [test, docs]
+    if: always() && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      BRANCH: ${{ github.ref_name }}
+      SHA: ${{ github.sha }}
+      REPO: ${{ github.repository }}
+      OWNER: ${{ github.repository_owner }}
+      GH_TOKEN: ${{ github.token }}
+      DOCS_RESULT: ${{ needs.docs.result }}
+      TEST_OUTCOME: ${{ needs.test.outputs.outcome }}
+      TEST_SUMMARY: ${{ needs.test.outputs.summary }}
+    steps:
+      - uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: docs
+          path: artifacts/docs
+
+      - uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: tests
+          path: artifacts/tests
+
+      - name: Publish to gh-pages
+        run: |
+          if [ ! -d artifacts/docs ] && [ ! -d artifacts/tests ]; then
+            exit 0
+          fi
+          BASE="$BRANCH/$SHA"
+          URL="https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          for attempt in 1 2 3 4 5; do
+            rm -rf pages
+            if ! git clone --depth 1 --branch gh-pages "$URL" pages; then
+              git init -q -b gh-pages pages
+              git -C pages remote add origin "$URL"
+            fi
+            for dir in docs tests; do
+              if [ -d "artifacts/$dir" ]; then
+                rm -rf "pages/$BASE/$dir"
+                mkdir -p "pages/$BASE/$dir"
+                cp -r "artifacts/$dir/." "pages/$BASE/$dir"
+              fi
+            done
+            touch pages/.nojekyll
+            git -C pages add -A
+            git -C pages commit -q -m "Docs and test report for $BRANCH@$SHA" || true
+            if git -C pages push origin gh-pages; then
+              exit 0
+            fi
+            sleep $((RANDOM % 10 + attempt))
+          done
+          exit 1
+
+      - name: Comment on open PR
+        run: |
+          PR=$(gh pr list --repo "$REPO" --head "$BRANCH" --state open --json number --jq '.[0].number')
+          if [ -z "$PR" ]; then
+            exit 0
+          fi
+          PAGES="https://${OWNER,,}.github.io/${REPO#*/}/${BRANCH}/${SHA}"
+
+          if [ "$DOCS_RESULT" = "success" ]; then
+            DOCS_LINE="Docs: ${PAGES}/docs/"
+          else
+            DOCS_LINE="Docs: build failed"
+          fi
+
+          case "$TEST_OUTCOME" in
+            success) TEST_LINE="Tests: ✅ passed ($TEST_SUMMARY)" ;;
+            failure) TEST_LINE="Tests: ❌ failed ($TEST_SUMMARY)" ;;
+            *)       TEST_LINE="Tests: did not run" ;;
+          esac
+          if [ -d artifacts/tests ]; then
+            TEST_LINE="$TEST_LINE — report: ${PAGES}/tests/"
+          fi
+
+          printf '**Commit %s**\n\n- %s\n- %s\n' "${SHA:0:7}" "$DOCS_LINE" "$TEST_LINE" > body.md
+          gh pr comment "$PR" --repo "$REPO" --body-file body.md
+
+  comment:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      BRANCH: ${{ github.event.pull_request.head.ref }}
+      SHA: ${{ github.event.pull_request.head.sha }}
+      PR: ${{ github.event.pull_request.number }}
+      REPO: ${{ github.repository }}
+      OWNER: ${{ github.repository_owner }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Comment links
+        run: |
+          PAGES="https://${OWNER,,}.github.io/${REPO#*/}/${BRANCH}/${SHA}"
+          printf '**Commit %s**\n\n- Docs: %s/docs/\n- Test report: %s/tests/\n' "${SHA:0:7}" "$PAGES" "$PAGES" > body.md
+          gh pr comment "$PR" --repo "$REPO" --body-file body.md
