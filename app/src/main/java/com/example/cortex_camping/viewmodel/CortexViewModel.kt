@@ -18,6 +18,8 @@ import com.example.cortex_camping.ui.screens.admin.ManagedUser
 import com.example.cortex_camping.ui.screens.owner.GuestReservation
 import com.example.cortex_camping.util.DeviceUtils
 import java.time.LocalDate
+import com.example.cortex_camping.model.LotteryEntry
+import com.example.cortex_camping.repository.LotteryRepository
 
 enum class Role(val label: String) { User("Camper"), Owner("Campsite owner"), Admin("Admin") }
 
@@ -104,23 +106,69 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     // Lotteries (entrant)
 
-    // TODO: lotteries the entrant has entered
-    val myLotteries: List<Lottery> get() = emptyList()
+    // lotteries the entrant has entered
+    val myLotteries: List<Lottery>
+        get() = lotteryRepository.lotteries.filter {
+        it.entryFor(deviceId) != null
+    }
+
+    private val lotteryRepository = LotteryRepository()
 
     // TODO: lotteries that include this campsite
-    fun lotteriesFor(campsiteId: String): List<Lottery> = emptyList()
+    fun lotteriesFor(campsiteId: String): List<Lottery> =
+        lotteryRepository.lotteries.filter {
+            campsiteId in it.campsiteIds
+        }
 
-    // TODO: add a LotteryEntry for this device if the lottery isn't full
-    fun enterLottery(lottery: Lottery, campsiteId: String) {}
+    // add a lotto entry
+    fun enterLottery(
+        lottery: Lottery,
+        campsiteId: String,
+        onResult: (String?) -> Unit = {}
+    ) {
+        lotteryRepository.enterLottery(
+            lottery.id,
+            LotteryEntry(deviceId, campsiteId),
+            onResult
+        )
+    }
 
-    // TODO: remove the entry, and move the first waitlisted entrant into the draw
-    fun leaveLottery(lottery: Lottery) {}
+    // leave a lotto
+    fun leaveLottery(
+        lottery: Lottery,
+        onResult: (String?) -> Unit = {}
+    ) {
+        lotteryRepository.leaveLottery(
+            lottery.id,
+            deviceId,
+            onResult
+        )
+    }
 
-    // TODO: add the entrant to the waitlist if there's room
-    fun joinWaitlist(lottery: Lottery, campsiteId: String) {}
+    // joins a waitlist if there is room
+    fun joinWaitlist(
+        lottery: Lottery,
+        campsiteId: String,
+        onResult: (String?) -> Unit = {}
+    ) {
+        lotteryRepository.joinWaitlist(
+            lottery.id,
+            LotteryEntry(deviceId, campsiteId),
+            onResult
+        )
+    }
 
-    // TODO: remove the entrant from the waitlist
-    fun leaveWaitlist(lottery: Lottery) {}
+    // removes an entrant from the waitlist
+    fun leaveWaitlist(
+        lottery: Lottery,
+        onResult: (String?) -> Unit = {}
+    ) {
+        lotteryRepository.leaveWaitlist(
+            lottery.id,
+            deviceId,
+            onResult
+        )
+    }
 
     // Owner
 
@@ -130,8 +178,11 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     // TODO: campsites where ownerId == deviceId
     val myCampsites: List<Campsite> get() = emptyList()
 
-    // TODO: lotteries where ownerId == deviceId
-    val ownerLotteries: List<Lottery> get() = emptyList()
+    // lotteries where ownerId == deviceId
+    val ownerLotteries: List<Lottery>
+        get() = lotteryRepository.lotteries.filter {
+            it.ownerId == deviceId
+        }
 
     fun hasOngoingLottery(campsite: Campsite): Boolean = false
 
@@ -144,8 +195,10 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     // TODO: save the new status on the entrant's reservation and notify them
     fun setReservationStatus(item: GuestReservation, status: ReservationStatus) {}
 
-    // TODO: create the lottery (blank id) or save the changes
-    fun saveLottery(lottery: Lottery) {}
+    // create the lottery (blank id) or save the changes
+    fun saveLottery(lottery: Lottery) {
+        lotteryRepository.saveLottery(lottery)
+    }
 
     // TODO: send a notification to everyone on the waitlist
     fun notifyWaitlist(lottery: Lottery) {}
