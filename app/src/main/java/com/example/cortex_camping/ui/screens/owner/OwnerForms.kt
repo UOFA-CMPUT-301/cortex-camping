@@ -86,6 +86,7 @@ fun CampsiteFormScreen(
     existing: Campsite?,
     onSave: (Campsite) -> Unit,
     onCancel: () -> Unit,
+    saving: Boolean = false,
 ) {
     val isNew = existing == null
     val context = LocalContext.current
@@ -97,7 +98,9 @@ fun CampsiteFormScreen(
     var price by rememberSaveable { mutableStateOf(existing?.price?.let { "%.2f".format(it) } ?: "") }
     var tags by rememberSaveable { mutableStateOf(existing?.tag?.joinToString(", ") ?: "") }
     var rulesUrl by rememberSaveable { mutableStateOf(existing?.rulesUrl ?: "") }
-    var imageUrl by rememberSaveable { mutableStateOf(existing?.imageUrl) }
+    // only the picked Uri is saveable: stored photos are too big for saved instance state
+    var pickedImage by rememberSaveable { mutableStateOf<String?>(null) }
+    val imageUrl = pickedImage ?: existing?.imageUrl
     var availableFrom by remember { mutableStateOf(existing?.availability?.availableFrom ?: today) }
     var availableUntil by remember { mutableStateOf(existing?.availability?.availableUntil ?: today.plusYears(1)) }
     var blocked by remember { mutableStateOf(existing?.availability?.unavailableDates ?: emptySet()) }
@@ -106,7 +109,7 @@ fun CampsiteFormScreen(
         if (uri != null) {
             // keep read access to the photo after the app restarts
             runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-            imageUrl = uri.toString()
+            pickedImage = uri.toString()
         }
     }
     fun pick() = picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
@@ -115,8 +118,8 @@ fun CampsiteFormScreen(
 
     FormScaffold(
         title = if (isNew) "Add New Campsite" else "Edit Campsite",
-        primaryLabel = if (isNew) "Add campsite" else "Save changes",
-        primaryEnabled = name.isNotBlank() && priceValue != null && datesValid,
+        primaryLabel = if (saving) "Saving..." else if (isNew) "Add campsite" else "Save changes",
+        primaryEnabled = name.isNotBlank() && priceValue != null && datesValid && !saving,
         onPrimary = {
             val base = existing ?: Campsite(price = 0.0, availability = AvailabilitySchedule(availableFrom, availableUntil))
             onSave(
@@ -135,7 +138,7 @@ fun CampsiteFormScreen(
         },
         onCancel = onCancel,
     ) {
-        if (isNew && imageUrl == null) {
+        if (imageUrl.isNullOrBlank()) {
             CortexButton("Upload campsite image", ::pick, Modifier.fillMaxWidth())
         } else {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {

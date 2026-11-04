@@ -3,8 +3,8 @@ package com.example.cortex_camping.model
 import java.time.LocalDate
 
 data class AvailabilitySchedule(
-    val availableFrom: LocalDate, // the first date that the campsite can be booked
-    val availableUntil: LocalDate, // the last date that the campsite can be booked
+    val availableFrom: LocalDate = LocalDate.now(), // the first date that the campsite can be booked
+    val availableUntil: LocalDate = LocalDate.now().plusYears(1), // the last date that the campsite can be booked
     val unavailableDates: Set<LocalDate> = emptySet()
 ) {
     init {
