@@ -354,6 +354,7 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
                     },
                 )
             }
+            // TODO: to be moved from campsite page to reservations page
             composable(Routes.CHAT, arguments = listOf(navArgument("campsiteId") { type = NavType.StringType })) { entry ->
                 val id = entry.arguments?.getString("campsiteId").orEmpty()
                 val site = vm.campsite(id) ?: return@composable

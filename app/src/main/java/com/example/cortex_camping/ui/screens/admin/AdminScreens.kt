@@ -249,8 +249,12 @@ fun AdminLogsScreen(logs: List<CommunicationLog>, onBack: () -> Unit) {
         item { SectionTitle("Sent activity · " + listOf("All users", "Notifications", "Messages")[filter]) }
         items(visible, key = { it.id }) { log ->
             InfoActionCard(
-                title = "${log.type.label} · ${log.subject}", lines = listOf(log.route, log.meta),
-                body = log.message, actionLabel = "View details", onAction = { viewing = log.id }, headerHeight = 126.dp,
+                title = log.message,
+                lines = emptyList(),
+                body = "",
+                actionLabel = "View details",
+                onAction = { viewing = log.id },
+                headerHeight = 10.dp,
             )
         }
     }

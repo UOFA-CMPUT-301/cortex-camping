@@ -15,6 +15,7 @@ import com.example.cortex_camping.model.Message
 import com.example.cortex_camping.model.Reservation
 import com.example.cortex_camping.model.ReservationStatus
 import com.example.cortex_camping.ui.screens.admin.CommunicationLog
+import com.example.cortex_camping.ui.screens.admin.LogType
 import com.example.cortex_camping.ui.screens.admin.ManagedUser
 import com.example.cortex_camping.ui.screens.owner.GuestReservation
 import com.example.cortex_camping.util.DeviceUtils
@@ -24,6 +25,7 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import com.example.cortex_camping.model.LotteryEntry
 import com.example.cortex_camping.repository.LotteryRepository
+import com.example.cortex_camping.repository.MessageRepository
 import com.example.cortex_camping.repository.CampsiteRepository
 import java.util.UUID
 
@@ -120,6 +122,7 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private val lotteryRepository = LotteryRepository()
+    private val messageRepository = MessageRepository()
 
     // TODO: lotteries that include this campsite
     fun lotteriesFor(campsiteId: String): List<Lottery> =
@@ -273,11 +276,19 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     // Chat
 
-    // TODO: messages between this entrant and the campsite's owner, oldest first
-    fun conversation(campsiteId: String, entrantId: String): List<Message> = emptyList()
+    // TODO: messagesz between this entrant and the campsite's owner, oldest first
+    fun conversation(campsiteId: String, entrantId: String): List<Message> =
+        messageRepository.conversation(campsiteId, entrantId)
 
     // TODO: save the message and notify the other person
-    fun sendMessage(campsiteId: String, entrantId: String, text: String) {}
+    fun sendMessage(campsiteId: String, entrantId: String, text: String) {
+        messageRepository.sendMessage(
+            campsiteId = campsiteId,
+            entrantId = entrantId,
+            senderId = deviceId,
+            text = text
+        )
+    }
 
     // Admin
 
@@ -295,6 +306,19 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     // TODO: clear the campsite's imageUrl
     fun deleteImage(campsite: Campsite) {}
 
-    // TODO: every notification and message, newest first
-    val communicationLogs: List<CommunicationLog> get() = emptyList()
+    // TODO: include notifications once notification storage is implemented
+    // TODO: improve formatting of log info (e.g. convert timestamp, use name instead of id)
+    val communicationLogs: List<CommunicationLog>
+        get() = messageRepository.messages
+            .sortedByDescending { it.sentAt }
+            .map { message ->
+                CommunicationLog(
+                    id = "message-${message.id.ifBlank { "${message.campsiteId}-${message.entrantId}-${message.sentAt}" }}",
+                    type = LogType.Message,
+                    subject = "Campsite ${message.campsiteId}",
+                    route = "Room ${message.campsiteId}/${message.entrantId}",
+                    meta = "Sender ${message.senderId} · Entrant ${message.entrantId} · ${message.sentAt}",
+                    message = message.text
+                )
+            }
 }
