@@ -48,6 +48,9 @@ import com.example.cortex_camping.ui.components.DateRangeCalendar
 import com.example.cortex_camping.ui.components.formatShortDate
 import java.time.LocalDate
 import java.time.YearMonth
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 
 
 /** Figma frame "Browse" */
@@ -66,7 +69,7 @@ fun BrowseScreen(
     var filterOpen by remember { mutableStateOf(false) }
     val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var location by remember { mutableStateOf("") }
-    var locationOpen by remember { mutableStateOf(false) }
+
     var checkIn by remember { mutableStateOf<LocalDate?>(null) }
     var checkOut by remember { mutableStateOf<LocalDate?>(null) }
     var datesOpen by remember { mutableStateOf(false) }
@@ -78,8 +81,9 @@ fun BrowseScreen(
     val locations = campsites.map { it.location }.filter { it.isNotBlank() }.distinct()
     val start = checkIn
     val end = checkOut
-    val datesLabel =
-        if (start != null && end != null) "${formatShortDate(start)} – ${formatShortDate(end)}" else "Dates"
+    val datesLabel = if (start != null && end != null) "${formatShortDate(start)} – ${formatShortDate(end)}" else "Any dates"
+    // how many filters are on, shown on the Filter button
+    val activeFilters = listOf(minGuests > 0, location.isNotBlank(), start != null && end != null).count { it }
 
 
     Scaffold(
@@ -118,7 +122,7 @@ fun BrowseScreen(
                     )
                     Box {
                         CortexButton(
-                            if (minGuests == 0) "Filter" else "$minGuests+ guests",
+                            if (activeFilters == 0) "Filter" else "Filter ($activeFilters)",
                             { filterOpen = true },
                             style = CortexButtonStyle.Outlined,
                             leadingIcon = Icons.Outlined.FilterList,
@@ -126,67 +130,53 @@ fun BrowseScreen(
                         DropdownMenu(
                             expanded = filterOpen,
                             onDismissRequest = { filterOpen = false }) {
+                            // Group size, the picked one has a check mark
+                            MenuHeading("Group size")
                             listOf(0, 2, 4, 6).forEach { n ->
                                 DropdownMenuItem(
                                     text = { Text(if (n == 0) "Any group size" else "$n+ guests") },
                                     onClick = { minGuests = n; filterOpen = false },
+                                    trailingIcon = if (minGuests == n) ({ Icon(Icons.Filled.Check, contentDescription = null) }) else null,
                                 )
                             }
-                        }
-                    }
-                }
-            }
 
-            // Location and date filters
-            // The row can scroll sideways if the location name is too long
-            item {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Box {
-                        CortexButton(
-                            location.ifBlank { "Location" },
-                            { locationOpen = true },
-                            style = CortexButtonStyle.Outlined,
-                            leadingIcon = Icons.Outlined.LocationOn
-                        )
-
-                        DropdownMenu(
-                            expanded = locationOpen,
-                            onDismissRequest = { locationOpen = false }
-                        ) {
+                            // Location
+                            HorizontalDivider()
+                            MenuHeading("Location")
                             DropdownMenuItem(
                                 text = { Text("Anywhere") },
                                 onClick = {
                                     location = ""
-                                    locationOpen = false
-                                }
+                                    filterOpen = false
+                                },
+                                trailingIcon = if (location.isBlank()) ({ Icon(Icons.Filled.Check, contentDescription = null) }) else null,
                             )
-
                             locations.forEach { place ->
                                 DropdownMenuItem(
                                     text = { Text(place) },
                                     onClick = {
                                         location = place
-                                        locationOpen = false
-                                    }
+                                        filterOpen = false
+                                    },
+                                    trailingIcon = if (location == place) ({ Icon(Icons.Filled.Check, contentDescription = null) }) else null,
                                 )
                             }
+
+                            // Dates, closes the menu and opens the date dialog
+                            HorizontalDivider()
+                            MenuHeading("Dates")
+                            DropdownMenuItem(
+                                text = { Text(datesLabel) },
+                                onClick = {
+                                    filterOpen = false
+                                    datesOpen = true
+                                },
+                                trailingIcon = { Icon(Icons.Outlined.CalendarMonth, contentDescription = null) },
+                            )
                         }
                     }
-
-                    CortexButton(
-                        datesLabel,
-                        { datesOpen = true },
-                        style = CortexButtonStyle.Outlined,
-                        leadingIcon = Icons.Outlined.CalendarMonth
-                    )
                 }
             }
-
             item {
                 ResultsHeading(
                     "Campsites",
@@ -207,9 +197,9 @@ fun BrowseScreen(
             PickDates(
                 checkIn = checkIn,
                 checkOut = checkOut,
-                onApply = { start, end ->
-                    checkIn = start
-                    checkOut = end
+                onApply = { inDate, outDate ->
+                    checkIn = inDate
+                    checkOut = outDate
                     datesOpen = false
                 },
                 onClear = {
@@ -223,6 +213,17 @@ fun BrowseScreen(
             )
         }
     }
+}
+
+// small grey title for each part of the Filter menu
+@Composable
+private fun MenuHeading(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelMedium,
+        color = CortexTheme.colors.textSecondary,
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+    )
 }
 
 // Lets the user choose their check-in and check-out dates
