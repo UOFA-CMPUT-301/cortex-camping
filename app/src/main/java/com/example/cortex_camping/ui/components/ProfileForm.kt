@@ -17,6 +17,8 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.rememberTextFieldState
@@ -43,9 +45,10 @@ fun CortexTextField(
     placeholder: String? = null,
 ) {
     val colors = CortexTheme.colors
+    val currentOnValueChange by rememberUpdatedState(onValueChange)
     val state = rememberTextFieldState(value)
     LaunchedEffect(value) { if (state.text.toString() != value) state.setTextAndPlaceCursorAtEnd(value) }
-    LaunchedEffect(state) { snapshotFlow { state.text.toString() }.collect { if (it != value) onValueChange(it) } }
+    LaunchedEffect(state) { snapshotFlow { state.text.toString() }.collect { if (it != value) currentOnValueChange(it) } }
     OutlinedTextField(
         state = state,
         label = { Text(label) },
