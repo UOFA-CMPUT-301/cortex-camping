@@ -22,16 +22,22 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.cortex_camping.model.Campsite
 import com.example.cortex_camping.ui.theme.CortexPalette
 import com.example.cortex_camping.ui.theme.CortexTheme
+import com.example.cortex_camping.util.ImageUtils
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 
 @Composable
 fun CampsiteListCard(campsite: Campsite, onClick: () -> Unit, modifier: Modifier = Modifier) {
@@ -65,8 +71,21 @@ fun formatRating(campsite: Campsite): String =
 
 @Composable
 fun CampsitePhoto(imageUrl: String?, modifier: Modifier = Modifier) {
-    // TODO: load imageUrl with an image loader. This is the empty state until then.
-    Box(modifier.background(CortexTheme.colors.surfaceDefault))
+    if (!imageUrl.isNullOrBlank()) {
+        // Coil can't read data URIs itself, so photos stored in Firestore are decoded here
+        val image = remember(imageUrl) { ImageUtils.decodeDataUri(imageUrl) ?: imageUrl }
+        AsyncImage(
+            model = ImageRequest.Builder(LocalContext.current)
+                .data(image)
+                .crossfade(true)
+                .build(),
+            contentDescription = "Campsite photo",
+            contentScale = ContentScale.Crop,
+            modifier = modifier.background(CortexTheme.colors.surfaceDefault),
+        )
+    } else {
+        Box(modifier.background(CortexTheme.colors.surfaceDefault))
+    }
 }
 
 @Composable

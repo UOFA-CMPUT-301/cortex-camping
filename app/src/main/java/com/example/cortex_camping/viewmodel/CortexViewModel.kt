@@ -1,6 +1,7 @@
 package com.example.cortex_camping.viewmodel
 
 import android.app.Application
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -17,15 +18,22 @@ import com.example.cortex_camping.ui.screens.admin.CommunicationLog
 import com.example.cortex_camping.ui.screens.admin.ManagedUser
 import com.example.cortex_camping.ui.screens.owner.GuestReservation
 import com.example.cortex_camping.util.DeviceUtils
+import com.example.cortex_camping.util.ImageUtils
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import com.example.cortex_camping.model.LotteryEntry
 import com.example.cortex_camping.repository.LotteryRepository
+import com.example.cortex_camping.repository.CampsiteRepository
+import java.util.UUID
 
 enum class Role(val label: String) { User("Camper"), Owner("Campsite owner"), Admin("Admin") }
 
 class CortexViewModel(application: Application) : AndroidViewModel(application) {
 
     val deviceId: String = DeviceUtils.getDeviceId(application)
+
+    private val campsiteRepository = CampsiteRepository()
 
     // TODO: return false until the entrant, owner and admin repositories have loaded,
     //  otherwise the app picks its start screen before it knows who the user is
@@ -57,8 +65,7 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     // Campsites
 
-    // TODO: CampsiteRepository.campsites
-    val campsites: List<Campsite> get() = emptyList()
+    val campsites: List<Campsite> get() = campsiteRepository.campsites
 
     fun campsite(id: String): Campsite? = campsites.firstOrNull { it.campsiteId == id }
 
@@ -175,8 +182,8 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     // TODO: create a CampsiteOwner for this device if there isn't one yet
     fun ensureOwner() {}
 
-    // TODO: campsites where ownerId == deviceId
-    val myCampsites: List<Campsite> get() = emptyList()
+    val myCampsites: List<Campsite>
+        get() = campsiteRepository.campsites.filter { it.ownerId == deviceId }
 
     // lotteries where ownerId == deviceId
     val ownerLotteries: List<Lottery>
@@ -189,8 +196,39 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     // TODO: every entrant's reservations at the owner's campsites, with the guest's name
     val ownerReservations: List<GuestReservation> get() = emptyList()
 
-    // TODO: CampsiteRepository.addCampsite for new campsites (blank campsiteId), editCampsite otherwise
-    fun saveCampsite(campsite: Campsite) {}
+    /**
+     * Shrinks a newly picked photo into the campsite, then writes it. If the photo can't be
+     * processed, [onError] runs and nothing is saved: a device-local Uri is useless in Firestore.
+     */
+    fun saveCampsite(campsite: Campsite, onSaved: () -> Unit = {}, onError: () -> Unit = {}) {
+        val campsiteId = campsite.campsiteId.ifBlank { UUID.randomUUID().toString() }
+        val ownerId = campsite.ownerId.ifBlank { deviceId }
+        val base = campsite.copy(campsiteId = campsiteId, ownerId = ownerId)
+        val image = base.imageUrl
+
+        if (image == null || !ImageUtils.isLocalUri(image)) {
+            campsiteRepository.addCampsite(base)
+            onSaved()
+            return
+        }
+        viewModelScope.launch {
+            runCatching { ImageUtils.encodeAsDataUri(getApplication(), image) }
+                .onSuccess { encoded ->
+                    campsiteRepository.addCampsite(base.copy(imageUrl = encoded))
+                    onSaved()
+                }
+                .onFailure { error ->
+                    Log.e("CortexViewModel", "Couldn't process image for campsite $campsiteId", error)
+                    // an older save may have stored a local Uri; don't let it block other edits
+                    if (image == campsite(campsiteId)?.imageUrl) {
+                        campsiteRepository.addCampsite(base)
+                        onSaved()
+                    } else {
+                        onError()
+                    }
+                }
+        }
+    }
 
     // TODO: save the new status on the entrant's reservation and notify them
     fun setReservationStatus(item: GuestReservation, status: ReservationStatus) {}

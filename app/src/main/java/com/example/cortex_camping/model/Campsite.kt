@@ -7,9 +7,9 @@ data class Campsite (
     val description: String = "", // desc of campsite
     val tag: List<String> = emptyList(), // tags, is a list because a campsite can have multiple tags
     val maxOccupancy: Int = 1, // maximum number of people that the campsite can house, 1 by default
-    val price: Double, // price per night, in Canadian
+    val price: Double = 0.0, // price per night, in Canadian
     val imageUrl: String? = null, // optional image url of the campsite
-    val availability: AvailabilitySchedule, // AvailabilitySchedule is its own class
+    val availability: AvailabilitySchedule = AvailabilitySchedule(), // AvailabilitySchedule is its own class
     val rating: Double = 0.0, // campsite rating defaults to 0.0
     val ratingCount: Int = 0, // how many reviews the rating is averaged from
     val location: String = "", // address shown on cards, e.g. "Big Bear Lake, CA"

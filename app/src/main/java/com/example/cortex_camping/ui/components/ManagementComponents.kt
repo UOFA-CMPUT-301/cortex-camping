@@ -1,5 +1,9 @@
 package com.example.cortex_camping.ui.components
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -39,9 +43,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -49,7 +56,9 @@ import androidx.compose.ui.unit.dp
 import com.example.cortex_camping.model.Campsite
 import com.example.cortex_camping.ui.theme.CortexPalette
 import com.example.cortex_camping.ui.theme.CortexTheme
+import com.example.cortex_camping.util.QrCodeUtils
 import java.time.Instant
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -261,11 +270,30 @@ fun InfoDialog(title: String, onDismiss: () -> Unit, content: @Composable Column
 @Composable
 fun QrCodeDialog(campsite: Campsite, onDismiss: () -> Unit) {
     val link = "cortexcamping://campsite/${campsite.campsiteId}"
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val qrCode = remember(link) { QrCodeUtils.bitmap(link, QrCodeUtils.PREVIEW_SIZE_PX) }
+    val saveAs = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri ->
+        if (uri != null) scope.launch {
+            val saved = runCatching { QrCodeUtils.savePng(context, link, uri) }.isSuccess
+            // a snackbar would be hidden behind this dialog
+            Toast.makeText(context, if (saved) "QR code saved" else "Couldn't save the QR code", Toast.LENGTH_SHORT).show()
+        }
+    }
     InfoDialog("${campsite.name} QR code", onDismiss) {
-        // TODO: draw a QR code of link here
-        Box(Modifier.size(240.dp).background(CortexTheme.colors.surfaceDefault).align(Alignment.CenterHorizontally))
+        Image(
+            bitmap = qrCode.asImageBitmap(),
+            contentDescription = "QR code for ${campsite.name}",
+            modifier = Modifier.size(240.dp).align(Alignment.CenterHorizontally),
+        )
         Text("Guests can scan this to open the campsite details.", style = MaterialTheme.typography.bodySmall, color = CortexTheme.colors.textSecondary)
         Text(link, style = MaterialTheme.typography.bodySmall, color = CortexPalette.BrandPrimary)
+        CortexButton(
+            "Save image",
+            { saveAs.launch(QrCodeUtils.fileName(campsite.name)) },
+            Modifier.fillMaxWidth(),
+            style = CortexButtonStyle.OutlinedBrand,
+        )
     }
 }
 

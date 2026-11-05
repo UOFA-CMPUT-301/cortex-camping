@@ -380,9 +380,25 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
             }
             composable(Routes.OWNER_CAMPSITE_FORM, arguments = listOf(navArgument("id") { type = NavType.StringType; nullable = true; defaultValue = null })) { e ->
                 val id = e.arguments?.getString("id")
+                var saving by remember { mutableStateOf(false) }
                 CampsiteFormScreen(
                     existing = id?.let(vm::campsite),
-                    onSave = { vm.saveCampsite(it); nav.popBackStack(); toast(if (id == null) "Campsite added" else "Changes saved") },
+                    saving = saving,
+                    onSave = { campsite ->
+                        saving = true
+                        vm.saveCampsite(
+                            campsite,
+                            onSaved = {
+                                toast(if (id == null) "Campsite added" else "Changes saved")
+                                // by route: the user may have already backed out while it saved
+                                nav.popBackStack(Routes.OWNER_CAMPSITE_FORM, inclusive = true)
+                            },
+                            onError = {
+                                saving = false
+                                toast("Couldn't use that image. Nothing was saved, please pick a different one.")
+                            },
+                        )
+                    },
                     onCancel = { nav.popBackStack() },
                 )
             }
