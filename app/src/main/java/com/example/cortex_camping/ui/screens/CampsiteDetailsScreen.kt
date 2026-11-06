@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import com.example.cortex_camping.model.Campsite
 import com.example.cortex_camping.model.Lottery
 import com.example.cortex_camping.ui.components.AmenityChip
+import com.example.cortex_camping.ui.components.AvailabilityDialog
 import com.example.cortex_camping.ui.components.CampsiteLotteryCard
 import com.example.cortex_camping.ui.components.CampsitePhoto
 import com.example.cortex_camping.ui.components.CortexBackTopBar
@@ -43,6 +44,7 @@ import com.example.cortex_camping.ui.components.GroupedSurface
 import com.example.cortex_camping.ui.components.InlineLink
 import com.example.cortex_camping.ui.components.LinkListItem
 import com.example.cortex_camping.ui.components.LocationMapCard
+import com.example.cortex_camping.ui.components.formatRange
 import com.example.cortex_camping.ui.components.formatRating
 import com.example.cortex_camping.ui.theme.CortexTheme
 
@@ -111,6 +113,7 @@ private fun AboutTab(
     val colors = CortexTheme.colors
     var expanded by rememberSaveable { mutableStateOf(false) }
     var allTags by rememberSaveable { mutableStateOf(false) }
+    var showCalendar by rememberSaveable { mutableStateOf(false) }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         CampsitePhoto(campsite, Modifier.fillMaxWidth().height(200.dp).clip(MaterialTheme.shapes.medium))
@@ -149,6 +152,8 @@ private fun AboutTab(
     }
     LocationMapCard(campsite.location, onOpenMap)
     GroupedSurface {
+        LinkListItem("Availability", formatRange(campsite.availability.availableFrom, campsite.availability.availableUntil), { showCalendar = true },)
+        CortexDivider()
         LinkListItem("Rules & policies", "Site rules, cancellation & owner instructions", onOpenRules)
         CortexDivider()
         LinkListItem("Hosted by $hostName", "Meet your host & send a message", onMessageHost)
@@ -156,6 +161,15 @@ private fun AboutTab(
         LinkListItem(
             if (campsite.ratingCount == 0) "★ No ratings yet" else "★ ${formatRating(campsite)} · ${campsite.ratingCount} ratings",
             "Read reviews & rate your stay", onReviews,
+        )
+    }
+
+    if (showCalendar) {
+        AvailabilityDialog(
+            title = "Availability",
+            blocked = campsite.availability.unavailableDates,
+            editable = false,
+            onDismiss = { showCalendar = false },
         )
     }
 }

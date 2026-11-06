@@ -1,3 +1,8 @@
+/**
+ * Repository responsible for managing lottery data in Firebase.
+ * Handles creating and updating lotteries, entering and leaving lotteries,
+ * managing waitlists, and converting lottery to and back for Firebase to use.
+ */
 package com.example.cortex_camping.repository
 
 import androidx.compose.runtime.mutableStateListOf
@@ -16,6 +21,7 @@ class LotteryRepository {
 
     private val _lotteries = mutableStateListOf<Lottery>()
 
+    /** All lotteries, kept up to date from Firestore. */
     val lotteries: List<Lottery>
         get() = _lotteries
 
@@ -36,18 +42,41 @@ class LotteryRepository {
         }
     }
 
-    // saves a new lottery or updates an existing one
+    /**
+     * Creates a lottery, or updates it if it already has an id.
+     *
+     * @param lottery the lottery to save
+     * @param onResult called when done
+     */
     fun saveLottery(lottery: Lottery, onResult: (String?) -> Unit = {}) {
         // check if an id exists already, if not generate one
-        val document = if (lottery.id.isBlank()) {
-            lotteriesRef.document()
-        } else {
-            lotteriesRef.document(lottery.id)
+        if (lottery.id.isBlank()) {
+            createLottery(lottery.copy(id = lotteriesRef.document().id), onResult)
+            return
         }
 
-        val updatedLottery = lottery.copy(id = document.id)
+        // a lottery can come with its own id, so only edit if it's already saved
+        lotteriesRef.document(lottery.id).get()
+            .addOnSuccessListener { document ->
+                if (document.exists()) {
+                    editLottery(lottery, onResult)
+                } else {
+                    createLottery(lottery, onResult)
+                }
+            }
+            .addOnFailureListener {
+                onResult(it.message ?: "Could not save lottery.")
+            }
+    }
 
-        document.set(lotteryToMap(updatedLottery))
+    /**
+     * Saves a new lottery to Firestore.
+     *
+     * @param lottery the lottery to create
+     * @param onResult called when done
+     */
+    private fun createLottery(lottery: Lottery, onResult: (String?) -> Unit) {
+        lotteriesRef.document(lottery.id).set(lotteryToMap(lottery))
             // check if successful or not
             .addOnSuccessListener {
                 onResult(null)
@@ -57,7 +86,35 @@ class LotteryRepository {
             }
     }
 
-    // adds the entrant on the screen to the lotto
+    /**
+     * Applies the owner's edits to a running lottery.
+     *
+     * @param edited the lottery with the new settings
+     * @param onResult called when done
+     */
+    private fun editLottery(edited: Lottery, onResult: (String?) -> Unit) {
+        updateLottery(edited.id, onResult) { lottery ->
+            check(lottery.status == LotteryStatus.ONGOING) {
+                "This lottery is already over."
+            }
+            check(edited.capacity >= lottery.entries.size) {
+                "${lottery.entries.size} people have entered, so the capacity can't be lower than that."
+            }
+            val updated = lottery.withSettingsFrom(edited)
+            check(updated.waitlist.size <= updated.waitlistLimit) {
+                "${updated.waitlist.size} people are on the waitlist, so it can't be smaller than that."
+            }
+            updated
+        }
+    }
+
+    /**
+     * Enters someone into a lottery.
+     *
+     * @param lotteryId the lottery to enter
+     * @param entry the person and their campsite
+     * @param onResult called when done
+     */
     fun enterLottery(
         lotteryId: String,
         entry: LotteryEntry,
@@ -69,7 +126,7 @@ class LotteryRepository {
                 "This lottery is already over."
             }
             // check if lotto can accept new entries
-            check(isOpen(lottery)) {
+            check(lottery.isRegistrationOpen()) {
                 "This lottery is currently not accepting entries."
             }
             // check if user is in either lotto or waitlist
@@ -85,7 +142,13 @@ class LotteryRepository {
         }
     }
 
-    // removes an entrant in the lotto, put the first in waitlist into the lotto
+    /**
+     * Removes someone from a lottery. The first person on the waitlist takes their spot.
+     *
+     * @param lotteryId the lottery to leave
+     * @param userId the person leaving
+     * @param onResult called when done
+     */
     fun leaveLottery(
         lotteryId: String,
         userId: String,
@@ -118,7 +181,13 @@ class LotteryRepository {
         }
     }
 
-    // entrant added to the waitlist
+    /**
+     * Adds someone to a full lottery's waitlist.
+     *
+     * @param lotteryId the lottery to wait for
+     * @param entry the person and their campsite
+     * @param onResult called when done
+     */
     fun joinWaitlist(
         lotteryId: String,
         entry: LotteryEntry,
@@ -129,7 +198,7 @@ class LotteryRepository {
                 "This lottery is already over."
             }
 
-            check(isOpen(lottery)) {
+            check(lottery.isRegistrationOpen()) {
                 "This lottery is not currently accepting entries."
             }
 
@@ -146,7 +215,7 @@ class LotteryRepository {
                 "You have already joined this waitlist."
             }
 
-            check(lottery.waitlist.size < lottery.waitlistCapacity) {
+            check(lottery.waitlist.size < lottery.waitlistLimit) {
                 "The waitlist is full."
             }
 
@@ -154,7 +223,13 @@ class LotteryRepository {
         }
     }
 
-    // remove an entrant from the waitlist
+    /**
+     * Removes someone from a lottery's waitlist.
+     *
+     * @param lotteryId the lottery they're waiting for
+     * @param userId the person leaving
+     * @param onResult called when done
+     */
     fun leaveWaitlist(
         lotteryId: String,
         userId: String,
@@ -170,14 +245,13 @@ class LotteryRepository {
         }
     }
 
-    // check if entries are open
-    private fun isOpen(lottery: Lottery): Boolean {
-        val now = LocalDateTime.now()
-
-        return !now.isBefore(lottery.opensAt) &&
-                !now.isAfter(lottery.closesAt)
-    }
-
+    /**
+     * Updates a lottery in a transaction, so two people can't take the same spot.
+     *
+     * @param lotteryId the lottery to change
+     * @param onResult called when done
+     * @param update makes the change
+     */
     private fun updateLottery(
         lotteryId: String,
         onResult: (String?) -> Unit,
@@ -202,13 +276,7 @@ class LotteryRepository {
 
             val updated = update(current)
 
-            transaction.update(
-                document,
-                mapOf(
-                    "entries" to updated.entries.map { entryToMap(it) },
-                    "waitlist" to updated.waitlist.map { entryToMap(it) }
-                )
-            )
+            transaction.set(document, lotteryToMap(updated))
             null
         }
             .addOnSuccessListener {
@@ -219,7 +287,12 @@ class LotteryRepository {
             }
     }
 
-    // converts our lotto to a firebase format
+    /**
+     * Converts a lottery to a Firestore map. Dates are saved as strings.
+     *
+     * @param lottery the lottery to convert
+     * @return the fields to save
+     */
     private fun lotteryToMap(lottery: Lottery): Map<String, Any> {
         return mapOf(
             "id" to lottery.id,
@@ -242,6 +315,12 @@ class LotteryRepository {
         )
     }
 
+    /**
+     * Converts an entry to a Firestore map.
+     *
+     * @param entry the entry to convert
+     * @return the fields to save
+     */
     private fun entryToMap(entry: LotteryEntry): Map<String, String> {
         return mapOf(
             "userId" to entry.userId,
@@ -249,7 +328,13 @@ class LotteryRepository {
         )
     }
 
-    // conver firebase data back into lotto
+    /**
+     * Builds a lottery from a Firestore document.
+     *
+     * @param id the document id
+     * @param data the document fields
+     * @return the lottery, or null if it can't be read
+     */
     private fun documentToLottery(
         id: String,
         data: Map<String, Any?>
@@ -299,6 +384,12 @@ class LotteryRepository {
         }
     }
 
+    /**
+     * Reads lottery entries from a Firestore field.
+     *
+     * @param value the raw field
+     * @return the entries, or an empty list
+     */
     private fun readEntries(value: Any?): List<LotteryEntry> {
         return (value as? List<*>)
             ?.mapNotNull { item ->
