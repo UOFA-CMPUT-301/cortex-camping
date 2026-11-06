@@ -3,6 +3,10 @@ package com.example.cortex_camping.model
 import com.google.firebase.firestore.Exclude
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
+
+// waitlistCapacity value for a waitlist that anyone can join
+const val NO_WAITLIST_LIMIT = -1
 
 enum class LotteryStatus(val label: String) {
     ONGOING("Ongoing"),
@@ -30,7 +34,7 @@ data class Lottery(
     val status: LotteryStatus = LotteryStatus.ONGOING,
     val capacity: Int = 50, // max number of entries in the draw
     val winners: Int = 3, // how many entries get picked
-    val waitlistCapacity: Int = 0, // 0 means the waitlist is off
+    val waitlistCapacity: Int = 0, // 0 means the waitlist is off, NO_WAITLIST_LIMIT means it has no cap
     val entries: List<LotteryEntry> = emptyList(),
     val waitlist: List<LotteryEntry> = emptyList(), // in order, first in line is first
     val winnerIds: List<String> = emptyList(),
@@ -47,7 +51,54 @@ data class Lottery(
 
     @get:Exclude
     val hasWaitlist: Boolean
-        get() = waitlistCapacity > 0
+        get() = waitlistCapacity != 0
+
+    @get:Exclude
+    val hasWaitlistLimit: Boolean
+        get() = waitlistCapacity != NO_WAITLIST_LIMIT
+
+    // the most people the waitlist can hold
+    @get:Exclude
+    val waitlistLimit: Int
+        get() = if (hasWaitlistLimit) waitlistCapacity else Int.MAX_VALUE
+
+    // e.g. "3/20", or just "3" when there's no cap
+    @get:Exclude
+    val waitlistSummary: String
+        get() = if (hasWaitlistLimit) "${waitlist.size}/$waitlistCapacity" else "${waitlist.size}"
+
+    // what's stopping the owner from saving these settings, null if they're fine
+    @get:Exclude
+    val settingsError: String?
+        get() = when {
+            capacity < 1 -> "Lottery capacity must be at least 1."
+            winners < 1 -> "A lottery needs at least 1 winner."
+            winners > capacity -> "There can't be more winners than lottery entries."
+            nights < 1 -> "Stays must be at least 1 night."
+            !closesAt.isAfter(opensAt) -> "Entry has to close after it opens."
+            drawAt.isBefore(closesAt) -> "The draw can't be before entry closes."
+            !stayUntil.isAfter(stayFrom) -> "Stays need to end after they start."
+            stayFrom.isBefore(drawAt.toLocalDate()) -> "Stays can't start before the draw."
+            ChronoUnit.DAYS.between(stayFrom, stayUntil) < nights -> "The stay period is too short for $nights nights."
+            else -> null
+        }
+
+    fun isRegistrationOpen(now: LocalDateTime = LocalDateTime.now()): Boolean =
+        status == LotteryStatus.ONGOING && !now.isBefore(opensAt) && !now.isAfter(closesAt)
+
+    // puts the owner's edits on top of the live lottery, so anyone who joined while the form
+    // was open stays in. if the capacity went up, the waitlist moves into the new slots
+    fun withSettingsFrom(edited: Lottery): Lottery {
+        val freeSlots = (edited.capacity - entries.size).coerceAtLeast(0)
+        return edited.copy(
+            id = id,
+            ownerId = ownerId,
+            status = status,
+            entries = entries + waitlist.take(freeSlots),
+            waitlist = waitlist.drop(freeSlots),
+            winnerIds = winnerIds
+        )
+    }
 
     fun entryFor(userId: String): LotteryEntry? = entries.firstOrNull { it.userId == userId }
 

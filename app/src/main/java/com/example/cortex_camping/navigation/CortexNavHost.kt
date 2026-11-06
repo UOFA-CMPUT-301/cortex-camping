@@ -35,6 +35,7 @@ import androidx.navigation.navArgument
 import androidx.navigation.navDeepLink
 import com.example.cortex_camping.BuildConfig
 import com.example.cortex_camping.model.AppNotification
+import com.example.cortex_camping.model.Campsite
 import com.example.cortex_camping.model.NotificationTarget
 import com.example.cortex_camping.ui.components.CortexBottomBar
 import com.example.cortex_camping.ui.components.CortexButton
@@ -63,6 +64,7 @@ import com.example.cortex_camping.ui.screens.admin.AdminLogsScreen
 import com.example.cortex_camping.ui.screens.admin.AdminUsersScreen
 import com.example.cortex_camping.ui.screens.owner.CampsiteFormScreen
 import com.example.cortex_camping.ui.screens.owner.LotteryFormScreen
+import com.example.cortex_camping.ui.screens.owner.OwnerCampsiteDetailsScreen
 import com.example.cortex_camping.ui.screens.owner.OwnerCampsitesScreen
 import com.example.cortex_camping.ui.screens.owner.OwnerLotteriesScreen
 import com.example.cortex_camping.ui.screens.owner.OwnerNotificationsScreen
@@ -85,6 +87,7 @@ object Routes {
 
     const val OWNER_CAMPSITES = "owner/campsites"
     const val OWNER_CAMPSITE_FORM = "owner/campsite?id={id}"
+    const val OWNER_CAMPSITE_DETAILS = "owner/campsite/details/{id}"
     const val OWNER_RESERVATIONS = "owner/reservations"
     const val OWNER_LOTTERIES = "owner/lotteries"
     const val OWNER_LOTTERY_FORM = "owner/lottery?id={id}"
@@ -101,6 +104,7 @@ object Routes {
     fun campsite(id: String, lotteryTab: Boolean = false) = "campsite/$id?tab=${if (lotteryTab) 1 else 0}"
     fun chat(campsiteId: String) = "chat/$campsiteId"
     fun ownerCampsiteForm(id: String? = null) = "owner/campsite" + (id?.let { "?id=$it" } ?: "")
+    fun ownerCampsiteDetails(id: String) = "owner/campsite/details/$id"
     fun ownerLotteryForm(id: String? = null) = "owner/lottery" + (id?.let { "?id=$it" } ?: "")
     fun ownerChat(campsiteId: String, entrantId: String) = "owner/chat/$campsiteId/$entrantId"
 }
@@ -180,6 +184,13 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     fun toast(msg: String) { scope.launch { snackbar.showSnackbar(msg) } }
+    fun openMap(site: Campsite) {
+        if (!context.openExternal("geo:0,0?q=" + Uri.encode(site.location.ifBlank { site.name }))) toast("No map app found")
+    }
+    fun openRules(site: Campsite) {
+        if (site.rulesUrl.isBlank()) toast("The owner hasn't added rules yet")
+        else if (!context.openExternal(site.rulesUrl)) toast("Couldn't open ${site.rulesUrl}")
+    }
     fun shareCsv(list: List<AppNotification>) {
         val send = Intent(Intent.ACTION_SEND).apply {
             type = "text/csv"
@@ -293,13 +304,8 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
                         leaveWaitlist = { vm.leaveWaitlist(it); toast("Left the waitlist") },
                     ),
                     onBack = { nav.popBackStack() },
-                    onOpenMap = {
-                        if (!context.openExternal("geo:0,0?q=" + Uri.encode(site.location.ifBlank { site.name }))) toast("No map app found")
-                    },
-                    onOpenRules = {
-                        if (site.rulesUrl.isBlank()) toast("The owner hasn't added rules yet")
-                        else if (!context.openExternal(site.rulesUrl)) toast("Couldn't open ${site.rulesUrl}")
-                    },
+                    onOpenMap = { openMap(site) },
+                    onOpenRules = { openRules(site) },
                     onMessageHost = { nav.navigate(Routes.chat(id)) },
                     onReviews = { /* TODO: show the campsite's reviews */ },
                     onLotteryDetails = { /* TODO: show the lottery's full details */ },
@@ -375,7 +381,20 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
                     unread = vm.ownerUnreadCount,
                     onNotifications = { nav.navigate(Routes.OWNER_NOTIFICATIONS) },
                     onAdd = { nav.navigate(Routes.ownerCampsiteForm()) },
+                    onView = { nav.navigate(Routes.ownerCampsiteDetails(it.campsiteId)) },
                     onEdit = { nav.navigate(Routes.ownerCampsiteForm(it.campsiteId)) },
+                )
+            }
+            composable(Routes.OWNER_CAMPSITE_DETAILS, arguments = listOf(navArgument("id") { type = NavType.StringType })) { e ->
+                val id = e.arguments?.getString("id").orEmpty()
+                val site = vm.campsite(id) ?: return@composable
+                OwnerCampsiteDetailsScreen(
+                    campsite = site,
+                    bookedDates = vm.bookedDates(site),
+                    onBack = { nav.popBackStack() },
+                    onEdit = { nav.navigate(Routes.ownerCampsiteForm(id)) },
+                    onOpenMap = { openMap(site) },
+                    onOpenRules = { openRules(site) },
                 )
             }
             composable(Routes.OWNER_CAMPSITE_FORM, arguments = listOf(navArgument("id") { type = NavType.StringType; nullable = true; defaultValue = null })) { e ->
@@ -427,10 +446,31 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
             }
             composable(Routes.OWNER_LOTTERY_FORM, arguments = listOf(navArgument("id") { type = NavType.StringType; nullable = true; defaultValue = null })) { e ->
                 val id = e.arguments?.getString("id")
+                var saving by remember { mutableStateOf(false) }
                 LotteryFormScreen(
                     existing = id?.let { lid -> vm.ownerLotteries.firstOrNull { it.id == lid } },
                     campsites = vm.myCampsites,
-                    onSave = { vm.saveLottery(it); nav.popBackStack(); toast(if (id == null) "Lottery created" else "Lottery updated") },
+                    saving = saving,
+                    onSave = { lottery ->
+                        if (id == null) {
+                            // new lotteries sync in the background, the server might not answer until we're back online
+                            vm.saveLottery(lottery) { error -> error?.let(::toast) }
+                            toast("Lottery created")
+                            nav.popBackStack()
+                        } else {
+                            saving = true
+                            vm.saveLottery(lottery) { error ->
+                                saving = false
+                                if (error != null) {
+                                    toast(error)
+                                } else {
+                                    toast("Lottery updated")
+                                    // by route: the user may have already backed out while it saved
+                                    nav.popBackStack(Routes.OWNER_LOTTERY_FORM, inclusive = true)
+                                }
+                            }
+                        }
+                    },
                     onCancel = { nav.popBackStack() },
                 )
             }
