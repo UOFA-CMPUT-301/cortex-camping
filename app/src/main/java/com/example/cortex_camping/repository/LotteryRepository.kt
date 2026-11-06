@@ -14,11 +14,6 @@ import com.google.firebase.firestore.firestore
 import java.time.LocalDate
 import java.time.LocalDateTime
 
-/**
- * Syncs lotteries with Firestore.
- *
- * onResult callbacks get null on success, or an error message to show the user.
- */
 class LotteryRepository {
 
     private val db = Firebase.firestore
