@@ -1,3 +1,8 @@
+/**
+ * Repository responsible for managing lottery data in Firebase.
+ * Handles creating and updating lotteries, entering and leaving lotteries,
+ * managing waitlists, and converting lottery to and back for Firebase to use.
+ */
 package com.example.cortex_camping.repository
 
 import androidx.compose.runtime.mutableStateListOf
@@ -49,15 +54,34 @@ class LotteryRepository {
      * @param onResult called when done
      */
     fun saveLottery(lottery: Lottery, onResult: (String?) -> Unit = {}) {
-        // check if an id exists already, if so only the owner's settings change
-        if (lottery.id.isNotBlank()) {
-            editLottery(lottery, onResult)
+        // check if an id exists already, if not generate one
+        if (lottery.id.isBlank()) {
+            createLottery(lottery.copy(id = lotteriesRef.document().id), onResult)
             return
         }
 
-        val document = lotteriesRef.document()
+        // a lottery can come with its own id, so only edit if it's already saved
+        lotteriesRef.document(lottery.id).get()
+            .addOnSuccessListener { document ->
+                if (document.exists()) {
+                    editLottery(lottery, onResult)
+                } else {
+                    createLottery(lottery, onResult)
+                }
+            }
+            .addOnFailureListener {
+                onResult(it.message ?: "Could not save lottery.")
+            }
+    }
 
-        document.set(lotteryToMap(lottery.copy(id = document.id)))
+    /**
+     * Saves a new lottery to Firestore.
+     *
+     * @param lottery the lottery to create
+     * @param onResult called when done
+     */
+    private fun createLottery(lottery: Lottery, onResult: (String?) -> Unit) {
+        lotteriesRef.document(lottery.id).set(lotteryToMap(lottery))
             // check if successful or not
             .addOnSuccessListener {
                 onResult(null)
