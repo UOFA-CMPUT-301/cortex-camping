@@ -1,3 +1,8 @@
+/**
+ * Repository responsible for managing lottery data in Firebase.
+ * Handles creating and updating lotteries, entering and leaving lotteries,
+ * managing waitlists, and converting lottery to and back for Firebase to use.
+ */
 package com.example.cortex_camping.repository
 
 import androidx.compose.runtime.mutableStateListOf
