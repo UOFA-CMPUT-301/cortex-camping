@@ -13,6 +13,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -180,6 +181,9 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     fun toast(msg: String) { scope.launch { snackbar.showSnackbar(msg) } }
+    LaunchedEffect(vm.adminError) {
+        vm.adminError?.let { snackbar.showSnackbar(it) }
+    }
     fun shareCsv(list: List<AppNotification>) {
         val send = Intent(Intent.ACTION_SEND).apply {
             type = "text/csv"
@@ -489,14 +493,14 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
                     ownerName = vm::ownerName,
                     onBack = { nav.popBackStack() },
                     onView = { nav.navigate(Routes.campsite(it.campsiteId)) },
-                    onDelete = { vm.deleteCampsite(it); toast("${it.name} deleted") },
+                    onDelete = { campsite -> vm.deleteCampsite(campsite) { error -> toast(error ?: "${campsite.name} deleted") } },
                 )
             }
             composable(Routes.ADMIN_USERS) {
-                AdminUsersScreen(vm.managedUsers, onBack = { nav.popBackStack() }, onDelete = { vm.deleteUser(it); toast("${it.name} deleted") })
+                AdminUsersScreen(vm.managedUsers, onBack = { nav.popBackStack() }, onDelete = { user -> vm.deleteUser(user) { error -> toast(error ?: "${user.name} deleted") } })
             }
             composable(Routes.ADMIN_IMAGES) {
-                AdminImagesScreen(vm.campsitesWithImages, vm::ownerName, onBack = { nav.popBackStack() }, onDelete = { vm.deleteImage(it); toast("Image deleted") })
+                AdminImagesScreen(vm.campsitesWithImages, vm::ownerName, onBack = { nav.popBackStack() }, onDelete = { campsite -> vm.deleteImage(campsite) { error -> toast(error ?: "Image deleted") } })
             }
             composable(Routes.ADMIN_LOGS) { AdminLogsScreen(vm.communicationLogs, onBack = { nav.popBackStack() }) }
         }
