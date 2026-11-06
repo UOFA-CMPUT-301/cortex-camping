@@ -26,6 +26,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.cortex_camping.model.Entrant
+import com.example.cortex_camping.repository.EntrantRepository
+import com.example.cortex_camping.repository.LotteryRepository
 import com.example.cortex_camping.ui.components.CortexBackTopBar
 import com.example.cortex_camping.ui.components.CortexButton
 import com.example.cortex_camping.ui.components.CortexButtonSize
@@ -49,7 +51,6 @@ fun ProfileScreen(
     onPrefsChange: (Entrant) -> Unit,
     onBack: () -> Unit,
     onEditProfile: () -> Unit,
-    onDeleteProfile: () -> Unit,
     onPolicy: () -> Unit,
     onHelp: () -> Unit,
     contentPadding: PaddingValues = PaddingValues(),
@@ -131,10 +132,17 @@ fun ProfileScreen(
             text = "Your full name, email address, phone number and profile picture will be removed from your Cortex Camping profile. This cannot be undone.\n\nAre you sure you want to delete your profile?",
             confirmLabel = "Delete Profile",
             destructive = true,
-            onConfirm = { confirmDelete = false; onDeleteProfile() },
+            onConfirm = { confirmDelete = false; onDeleteProfile(ent, entrant) },
             onDismiss = { confirmDelete = false },
         )
     }
+}
+var ent: EntrantRepository = EntrantRepository()
+var lot: LotteryRepository = LotteryRepository()
+fun onDeleteProfile(erep: EntrantRepository, ent: Entrant) {
+    val entrantId: String = ent.id
+    erep.deleteEntrant(entrantId)
+    lot.leaveAllLotteries(entrantId)
 }
 
 @Composable

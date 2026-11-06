@@ -32,4 +32,6 @@ data class Entrant(
             val today = LocalDate.now()
             return reservations.filter { it.checkOut.isBefore(today)} // note the it
         }
+
+
 }
