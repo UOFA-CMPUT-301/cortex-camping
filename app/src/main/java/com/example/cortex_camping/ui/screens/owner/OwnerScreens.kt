@@ -2,14 +2,20 @@ package com.example.cortex_camping.ui.screens.owner
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -24,6 +30,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -34,16 +41,22 @@ import com.example.cortex_camping.model.LotteryStatus
 import com.example.cortex_camping.model.Reservation
 import com.example.cortex_camping.model.ReservationStatus
 import com.example.cortex_camping.ui.components.ActionPair
+import com.example.cortex_camping.ui.components.AmenityChip
 import com.example.cortex_camping.ui.components.AvailabilityDialog
 import com.example.cortex_camping.ui.components.BellAction
+import com.example.cortex_camping.ui.components.CortexBackTopBar
 import com.example.cortex_camping.ui.components.CortexButton
 import com.example.cortex_camping.ui.components.CortexButtonSize
 import com.example.cortex_camping.ui.components.CortexButtonStyle
 import com.example.cortex_camping.ui.components.CortexConfirmDialog
+import com.example.cortex_camping.ui.components.CortexDivider
 import com.example.cortex_camping.ui.components.CortexMediumTopBar
 import com.example.cortex_camping.ui.components.CortexSegmentedToggle
 import com.example.cortex_camping.ui.components.CampsitePhoto
+import com.example.cortex_camping.ui.components.GroupedSurface
 import com.example.cortex_camping.ui.components.InfoDialog
+import com.example.cortex_camping.ui.components.LinkListItem
+import com.example.cortex_camping.ui.components.LocationMapCard
 import com.example.cortex_camping.ui.components.formatDate
 import com.example.cortex_camping.ui.components.formatRange
 import com.example.cortex_camping.ui.components.formatRating
@@ -102,6 +115,7 @@ fun OwnerCampsitesScreen(
     unread: Int,
     onNotifications: () -> Unit,
     onAdd: () -> Unit,
+    onView: (Campsite) -> Unit,
     onEdit: (Campsite) -> Unit,
 ) {
     var tab by rememberSaveable { mutableStateOf(0) }
@@ -123,6 +137,7 @@ fun OwnerCampsitesScreen(
                 trailing = { CortexButton("QR code", { qrFor = site.campsiteId }, size = CortexButtonSize.XSmall, touchTarget = 32.dp) },
                 footerPadding = 4.dp,
             ) {
+                CortexButton("View details", { onView(site) }, Modifier.fillMaxWidth(), touchTarget = 40.dp)
                 CortexButton("Edit campsite", { onEdit(site) }, Modifier.fillMaxWidth(), style = CortexButtonStyle.OutlinedBrand, touchTarget = 40.dp)
                 CortexButton("View booked dates", { datesFor = site.campsiteId }, Modifier.fillMaxWidth(), style = CortexButtonStyle.OutlinedBrand, touchTarget = 40.dp)
             }
@@ -133,6 +148,67 @@ fun OwnerCampsitesScreen(
         val site = campsites.firstOrNull { it.campsiteId == id }
         if (site == null) datesFor = null
         else AvailabilityDialog("${site.name} · booked dates", bookedDates(site), editable = false, onDismiss = { datesFor = null })
+    }
+}
+
+/** What the owner sees for one of their campsites, everything on it is read-only until they hit edit */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun OwnerCampsiteDetailsScreen(
+    campsite: Campsite,
+    bookedDates: Set<LocalDate>,
+    onBack: () -> Unit,
+    onEdit: () -> Unit,
+    onOpenMap: () -> Unit,
+    onOpenRules: () -> Unit,
+) {
+    val colors = CortexTheme.colors
+    val availability = campsite.availability
+    var showDates by rememberSaveable { mutableStateOf(false) }
+
+    Scaffold(
+        topBar = { CortexBackTopBar("Campsite details", onBack) },
+        containerColor = colors.surfaceBase,
+        contentWindowInsets = WindowInsets(0),
+    ) { inner ->
+        Column(
+            Modifier.fillMaxSize().padding(inner).verticalScroll(rememberScrollState())
+                .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            CampsitePhoto(campsite, Modifier.fillMaxWidth().height(200.dp).clip(MaterialTheme.shapes.medium))
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(campsite.name, style = MaterialTheme.typography.headlineSmall, color = colors.textPrimary)
+                Text(
+                    "Max ${campsite.maxOccupancy} guests · $%.2f CAD per night".format(campsite.price),
+                    style = MaterialTheme.typography.bodySmall, color = colors.textSecondary,
+                )
+                Text(
+                    if (campsite.ratingCount == 0) "★ No ratings yet" else "★ ${formatRating(campsite)} · ${campsite.ratingCount} ratings",
+                    style = MaterialTheme.typography.bodySmall, color = colors.textSecondary,
+                )
+            }
+            Text(
+                campsite.description.ifBlank { "No description added yet." },
+                style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary,
+            )
+            if (campsite.tag.isNotEmpty()) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { campsite.tag.forEach { AmenityChip(it) } }
+            }
+            LocationMapCard(campsite.location, onOpenMap)
+            GroupedSurface {
+                LinkListItem(
+                    "Availability", "${formatRange(availability.availableFrom, availability.availableUntil)} · ${availability.unavailableDates.size} blocked",
+                    { showDates = true },
+                )
+                CortexDivider()
+                LinkListItem("Rules & policies", campsite.rulesUrl.ifBlank { "No rules added yet" }, onOpenRules)
+            }
+            CortexButton("Edit campsite", onEdit, Modifier.fillMaxWidth())
+        }
+    }
+    if (showDates) {
+        AvailabilityDialog("${campsite.name} · booked dates", bookedDates, editable = false, onDismiss = { showDates = false })
     }
 }
 
@@ -234,7 +310,7 @@ fun OwnerLotteriesScreen(
             ManagementCard(
                 title = l.name.ifBlank { site?.name ?: "Lottery" },
                 subtitle = l.campsiteIds.mapNotNull { campsite(it)?.name }.joinToString(", "),
-                meta = "${l.entries.size}/${l.capacity} entered · " + if (l.hasWaitlist) "${l.waitlist.size}/${l.waitlistCapacity} waitlisted" else "Waitlist off",
+                meta = "${l.entries.size}/${l.capacity} entered · " + if (l.hasWaitlist) "${l.waitlistSummary} waitlisted" else "Waitlist off",
                 leading = { m -> CampsitePhoto(site, m) }, headerHeight = 88.dp,
                 trailing = { Text(l.status.label, style = MaterialTheme.typography.bodySmall, color = CortexPalette.BrandPrimary) },
             ) {
@@ -244,7 +320,7 @@ fun OwnerLotteriesScreen(
                     textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CortexButton("Update lottery", { onUpdate(l) }, Modifier.weight(1f), style = CortexButtonStyle.OutlinedBrand)
+                    CortexButton("Update lottery", { onUpdate(l) }, Modifier.weight(1f), style = CortexButtonStyle.OutlinedBrand, enabled = ongoing)
                     if (ongoing && l.hasWaitlist) CortexButton("View waitlist", { waitlistFor = l.id }, Modifier.weight(1f), style = CortexButtonStyle.OutlinedBrand)
                     else Box(Modifier.weight(1f))
                 }
@@ -263,7 +339,7 @@ fun OwnerLotteriesScreen(
     waitlistFor?.let { id ->
         val l = lotteries.firstOrNull { it.id == id }
         if (l == null) { waitlistFor = null; return@let }
-        InfoDialog("Waitlist · ${l.waitlist.size}/${l.waitlistCapacity}", { waitlistFor = null }) {
+        InfoDialog("Waitlist · ${l.waitlistSummary}", { waitlistFor = null }) {
             if (l.waitlist.isEmpty()) {
                 Text("Nobody is on the waitlist yet.", style = MaterialTheme.typography.bodyMedium, color = CortexTheme.colors.textSecondary)
             }

@@ -39,6 +39,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.example.cortex_camping.model.AvailabilitySchedule
 import com.example.cortex_camping.model.Campsite
 import com.example.cortex_camping.model.Lottery
+import com.example.cortex_camping.model.NO_WAITLIST_LIMIT
 import com.example.cortex_camping.ui.components.AvailabilityDialog
 import com.example.cortex_camping.ui.components.CortexButton
 import com.example.cortex_camping.ui.components.CortexButtonStyle
@@ -177,6 +178,7 @@ fun LotteryFormScreen(
     campsites: List<Campsite>,
     onSave: (Lottery) -> Unit,
     onCancel: () -> Unit,
+    saving: Boolean = false,
 ) {
     val isNew = existing == null
     val defaults = existing ?: Lottery()
@@ -186,7 +188,7 @@ fun LotteryFormScreen(
     var capacity by rememberSaveable { mutableStateOf(defaults.capacity.toString()) }
     var winners by rememberSaveable { mutableStateOf(defaults.winners.toString()) }
     var waitlistOn by rememberSaveable { mutableStateOf(defaults.hasWaitlist) }
-    var waitlistCap by rememberSaveable { mutableStateOf(if (defaults.hasWaitlist) defaults.waitlistCapacity.toString() else "") }
+    var waitlistCap by rememberSaveable { mutableStateOf(if (defaults.waitlistCapacity > 0) defaults.waitlistCapacity.toString() else "") }
     var opens by remember { mutableStateOf(defaults.opensAt) }
     var closes by remember { mutableStateOf(defaults.closesAt) }
     var draw by remember { mutableStateOf(defaults.drawAt) }
@@ -195,21 +197,21 @@ fun LotteryFormScreen(
     var nights by rememberSaveable { mutableStateOf(defaults.nights.toString()) }
     var pickCampsites by remember { mutableStateOf(false) }
     val selectedNames = options.filter { it.first in selected }.joinToString(", ") { it.second }
-    val datesValid = closes.isAfter(opens) && !draw.isBefore(closes) && stayUntil.isAfter(stayFrom)
+    val lottery = defaults.copy(
+        name = name.trim(), campsiteIds = options.map { it.first }.filter { it in selected },
+        capacity = capacity.toIntOrNull() ?: 0, winners = winners.toIntOrNull() ?: 0,
+        // the capacity is optional, leaving it blank means the waitlist has no limit
+        waitlistCapacity = if (waitlistOn) waitlistCap.toIntOrNull()?.takeIf { it > 0 } ?: NO_WAITLIST_LIMIT else 0,
+        opensAt = opens, closesAt = closes, drawAt = draw,
+        stayFrom = stayFrom, stayUntil = stayUntil, nights = nights.toIntOrNull() ?: 0,
+    )
+    val error = lottery.settingsError
 
     FormScaffold(
         title = if (isNew) "Create New Lottery" else "Edit Lottery",
-        primaryLabel = if (isNew) "Create lottery" else "Save changes",
-        primaryEnabled = name.isNotBlank() && selected.isNotEmpty() && datesValid,
-        onPrimary = {
-            onSave(defaults.copy(
-                name = name.trim(), campsiteIds = options.map { it.first }.filter { it in selected },
-                capacity = capacity.toIntOrNull() ?: defaults.capacity, winners = winners.toIntOrNull() ?: defaults.winners,
-                waitlistCapacity = if (waitlistOn) waitlistCap.toIntOrNull() ?: 0 else 0,
-                opensAt = opens, closesAt = closes, drawAt = draw,
-                stayFrom = stayFrom, stayUntil = stayUntil, nights = nights.toIntOrNull()?.coerceAtLeast(1) ?: defaults.nights,
-            ))
-        },
+        primaryLabel = if (saving) "Saving..." else if (isNew) "Create lottery" else "Save changes",
+        primaryEnabled = name.isNotBlank() && selected.isNotEmpty() && error == null && !saving,
+        onPrimary = { onSave(lottery) },
         onCancel = onCancel,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -229,7 +231,7 @@ fun LotteryFormScreen(
             )
             OutlinedTextField(
                 value = if (waitlistOn) waitlistCap else "", onValueChange = { waitlistCap = it.filter(Char::isDigit) },
-                label = { Text("Waitlist capacity (optional)") }, placeholder = { Text(if (waitlistOn) "e.g. 20" else "Disabled") },
+                label = { Text("Waitlist capacity (optional)") }, placeholder = { Text(if (waitlistOn) "No limit" else "Disabled") },
                 enabled = waitlistOn, singleLine = true, textStyle = MaterialTheme.typography.bodyLarge, shape = MaterialTheme.shapes.extraSmall,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 colors = OutlinedTextFieldDefaults.colors(
@@ -246,12 +248,7 @@ fun LotteryFormScreen(
                 DateField("Stays until", stayUntil, { stayUntil = it }, Modifier.weight(1f))
             }
             CortexTextField(nights, { nights = it.filter(Char::isDigit) }, "Nights per stay", keyboardType = KeyboardType.Number)
-            if (!datesValid) {
-                Text(
-                    "Entry has to close after it opens, the draw can't be before entry closes, and stays need to end after they start.",
-                    style = MaterialTheme.typography.bodySmall, color = CortexTheme.colors.error,
-                )
-            }
+            error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = CortexTheme.colors.error) }
         }
     }
     if (pickCampsites) {

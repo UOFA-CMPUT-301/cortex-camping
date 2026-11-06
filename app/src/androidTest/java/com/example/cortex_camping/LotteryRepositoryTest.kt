@@ -76,6 +76,18 @@ class LotteryRepositoryTest {
         created.clear()
     }
 
+    // save lotto tests
+    @Test
+    fun saveLottery_keepsEntrantsWhenEditing() {
+        val lottery = newLottery()
+        assertNull(enter(lottery, alice))
+
+        // this copy is from before alice entered
+        assertNull(call { repo.saveLottery(lottery.copy(name = "Renamed"), it) })
+
+        assertEquals(listOf(alice), entries(lottery))
+    }
+
     // enter lotto tests
     @Test
     fun enterLottery_addsEntrant() {

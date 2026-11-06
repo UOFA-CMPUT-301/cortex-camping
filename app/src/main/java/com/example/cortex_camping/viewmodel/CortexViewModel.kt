@@ -24,6 +24,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import com.example.cortex_camping.model.LotteryEntry
+import com.example.cortex_camping.model.LotteryStatus
 import com.example.cortex_camping.repository.LotteryRepository
 import com.example.cortex_camping.repository.MessageRepository
 import com.example.cortex_camping.repository.CampsiteRepository
@@ -199,7 +200,8 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
             it.ownerId == deviceId
         }
 
-    fun hasOngoingLottery(campsite: Campsite): Boolean = false
+    fun hasOngoingLottery(campsite: Campsite): Boolean =
+        lotteriesFor(campsite.campsiteId).any { it.status == LotteryStatus.ONGOING }
 
     // TODO: every entrant's reservations at the owner's campsites, with the guest's name
     val ownerReservations: List<GuestReservation> get() = emptyList()
@@ -242,8 +244,8 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     fun setReservationStatus(item: GuestReservation, status: ReservationStatus) {}
 
     // create the lottery (blank id) or save the changes
-    fun saveLottery(lottery: Lottery) {
-        lotteryRepository.saveLottery(lottery)
+    fun saveLottery(lottery: Lottery, onResult: (String?) -> Unit = {}) {
+        lotteryRepository.saveLottery(lottery.copy(ownerId = lottery.ownerId.ifBlank { deviceId }), onResult)
     }
 
     // TODO: send a notification to everyone on the waitlist
