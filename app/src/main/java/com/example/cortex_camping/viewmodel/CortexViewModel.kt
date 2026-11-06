@@ -15,6 +15,7 @@ import com.example.cortex_camping.model.Message
 import com.example.cortex_camping.model.Reservation
 import com.example.cortex_camping.model.ReservationStatus
 import com.example.cortex_camping.ui.screens.admin.CommunicationLog
+import com.example.cortex_camping.ui.screens.admin.LogType
 import com.example.cortex_camping.ui.screens.admin.ManagedUser
 import com.example.cortex_camping.ui.screens.owner.GuestReservation
 import com.example.cortex_camping.util.DeviceUtils
@@ -24,8 +25,10 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import com.example.cortex_camping.model.LotteryEntry
 import com.example.cortex_camping.repository.LotteryRepository
+import com.example.cortex_camping.repository.MessageRepository
 import com.example.cortex_camping.repository.CampsiteRepository
 import java.util.UUID
+import com.example.cortex_camping.repository.AdminModerationRepository
 
 enum class Role(val label: String) { User("Camper"), Owner("Campsite owner"), Admin("Admin") }
 
@@ -34,14 +37,18 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     val deviceId: String = DeviceUtils.getDeviceId(application)
 
     private val campsiteRepository = CampsiteRepository()
+    private val moderationRepository = AdminModerationRepository()
 
-    // TODO: return false until the entrant, owner and admin repositories have loaded,
-    //  otherwise the app picks its start screen before it knows who the user is
+    override fun onCleared() {
+        moderationRepository.close()
+        super.onCleared()
+    }
+
     val isLoaded: Boolean get() = true
 
     var role by mutableStateOf(Role.User)
 
-    // TODO: Admin if deviceId is in the admins collection, Owner if there's only an owner profile
+    // Owner/profile startup routing is still handled separately.
     fun startingRole(): Role = Role.User
 
     // Current user
@@ -52,16 +59,16 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     // TODO: look up deviceId in CampsiteOwnerRepository
     val owner: CampsiteOwner? get() = null
 
-    // TODO: check AdminRepository
-    val isAdmin: Boolean get() = false
+    val isAdmin: Boolean get() = role == Role.Admin
+    val adminError: String? get() = moderationRepository.error
 
     val isRegistered: Boolean get() = entrant != null
 
     // TODO: look up the name in EntrantRepository
     fun entrantName(id: String): String = "Camper"
 
-    // TODO: look up the name in CampsiteOwnerRepository
-    fun ownerName(id: String): String = "Campsite owner"
+    // Moderation profiles provide owner names on the admin browse screens.
+    fun ownerName(id: String): String = managedUsers.firstOrNull { it.isOwner && it.id == id }?.name ?: "Campsite owner"
 
     // Campsites
 
@@ -120,6 +127,7 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private val lotteryRepository = LotteryRepository()
+    private val messageRepository = MessageRepository()
 
     // TODO: lotteries that include this campsite
     fun lotteriesFor(campsiteId: String): List<Lottery> =
@@ -273,28 +281,55 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     // Chat
 
-    // TODO: messages between this entrant and the campsite's owner, oldest first
-    fun conversation(campsiteId: String, entrantId: String): List<Message> = emptyList()
+    // TODO: messagesz between this entrant and the campsite's owner, oldest first
+    fun conversation(campsiteId: String, entrantId: String): List<Message> =
+        messageRepository.conversation(campsiteId, entrantId)
 
     // TODO: save the message and notify the other person
-    fun sendMessage(campsiteId: String, entrantId: String, text: String) {}
+    fun sendMessage(campsiteId: String, entrantId: String, text: String) {
+        messageRepository.sendMessage(
+            campsiteId = campsiteId,
+            entrantId = entrantId,
+            senderId = deviceId,
+            text = text
+        )
+    }
 
     // Admin
 
-    // TODO: every entrant and owner
-    val managedUsers: List<ManagedUser> get() = emptyList()
+    // Profiles displayed by the admin user browser.
+    val managedUsers: List<ManagedUser> get() = moderationRepository.users
 
-    // TODO: delete the entrant or owner profile
-    fun deleteUser(user: ManagedUser) {}
+    // Delete the selected role's profile, preserving independent records.
+    fun deleteUser(user: ManagedUser, onResult: (String?) -> Unit) {
+        moderationRepository.deleteUser(user, onResult)
+    }
 
-    // TODO: delete the campsite
-    fun deleteCampsite(campsite: Campsite) {}
+    // Completion callbacks report the server result to the confirmation flow.
+    fun deleteCampsite(campsite: Campsite, onResult: (String?) -> Unit) {
+        moderationRepository.deleteCampsite(campsite.campsiteId, onResult)
+    }
 
     val campsitesWithImages: List<Campsite> get() = campsites.filter { !it.imageUrl.isNullOrBlank() }
 
-    // TODO: clear the campsite's imageUrl
-    fun deleteImage(campsite: Campsite) {}
+    // Remove only the reviewed image field, without overwriting campsite edits.
+    fun deleteImage(campsite: Campsite, onResult: (String?) -> Unit) {
+        moderationRepository.deleteImage(campsite.campsiteId, campsite.imageUrl, onResult)
+    }
 
-    // TODO: every notification and message, newest first
-    val communicationLogs: List<CommunicationLog> get() = emptyList()
+    // TODO: include notifications once notification storage is implemented
+    // TODO: improve formatting of log info (e.g. convert timestamp, use name instead of id)
+    val communicationLogs: List<CommunicationLog>
+        get() = messageRepository.messages
+            .sortedByDescending { it.sentAt }
+            .map { message ->
+                CommunicationLog(
+                    id = "message-${message.id.ifBlank { "${message.campsiteId}-${message.entrantId}-${message.sentAt}" }}",
+                    type = LogType.Message,
+                    subject = "Campsite ${message.campsiteId}",
+                    route = "Room ${message.campsiteId}/${message.entrantId}",
+                    meta = "Sender ${message.senderId} · Entrant ${message.entrantId} · ${message.sentAt}",
+                    message = message.text
+                )
+            }
 }
