@@ -181,6 +181,7 @@ class LotteryRepository {
         }
     }
 
+
     /**
      * Adds someone to a full lottery's waitlist.
      *
@@ -188,42 +189,6 @@ class LotteryRepository {
      * @param entry the person and their campsite
      * @param onResult called when done
      */
-    // Function to remove a user from all existing lotteries (if possible)
-    fun leaveAllLotteries(
-        userId: String,
-        onResult: (String?) -> Unit = {}
-    ) {
-        for (i in _lotteries) {
-            val lotteryId = i.id
-            updateLottery(lotteryId, onResult) { lottery ->
-                check(lottery.status == LotteryStatus.ONGOING) {
-                    "This lottery is already over"
-                }
-                val remainingEntries =
-                    lottery.entries.filterNot { it.userId == userId }
-                check(remainingEntries.size < lottery.entries.size) {
-                    "You are yet to be entered into this lottery."
-                }
-                // first person waiting gets into the lottery
-                val firstWaiting = lottery.waitlist.firstOrNull()
-
-                lottery.copy(
-                    entries = if (firstWaiting != null) {
-                        remainingEntries + firstWaiting
-                    } else {
-                        remainingEntries
-                    },
-                    waitlist = if (firstWaiting != null) {
-                        lottery.waitlist.drop(1)
-                    } else {
-                        lottery.waitlist
-                    }
-                )
-            }
-        }
-
-    }
-
     // entrant added to the waitlist
     fun joinWaitlist(
         lotteryId: String,
