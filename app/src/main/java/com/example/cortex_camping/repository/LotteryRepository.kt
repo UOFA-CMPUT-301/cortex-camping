@@ -9,7 +9,11 @@ import androidx.compose.runtime.mutableStateListOf
 import com.example.cortex_camping.model.Lottery
 import com.example.cortex_camping.model.LotteryEntry
 import com.example.cortex_camping.model.LotteryStatus
+import com.example.cortex_camping.model.Reservation
 import com.google.firebase.Firebase
+import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.Transaction
 import com.google.firebase.firestore.firestore
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -18,6 +22,12 @@ class LotteryRepository {
 
     private val db = Firebase.firestore
     private val lotteriesRef = db.collection("lotteries")
+
+    private val campsitesRef = db.collection("campsite")
+
+    private val reservationsRef = db.collection("reservations")
+
+    private val nightsRef = db.collection("bookedNights")
 
     private val _lotteries = mutableStateListOf<Lottery>()
 
@@ -175,6 +185,96 @@ class LotteryRepository {
         }
     }
 
+    // a winner books their stay: picks one of the lottery's campsites and their dates.
+    fun claimWin(
+        lotteryId: String,
+        reservation: Reservation,
+        onResult: (String?) -> Unit = {}
+    ) {
+        if (lotteryId.isBlank()) {
+            onResult("Invalid lottery ID.")
+            return
+        }
+        val lotteryDoc = lotteriesRef.document(lotteryId)
+        val reservationDoc = reservationsRef.document(reservation.bookingId)
+
+        db.runTransaction { transaction ->
+            val lottery = transaction.readLottery(lotteryDoc)
+
+            check(lottery.hasOpenOffer(reservation.userId)) {
+                "You don't have an open offer for this lottery."
+            }
+            check(reservation.campsiteId in lottery.campsiteIds) {
+                "That campsite isn't part of this lottery."
+            }
+            check(reservation.nights in 1..lottery.nights) {
+                "Pick a stay of up to ${lottery.nights} nights."
+            }
+            check(!reservation.checkIn.isBefore(lottery.stayFrom) &&
+                    !reservation.checkOut.isAfter(lottery.stayUntil)) {
+                "Those dates are outside this lottery's stay window."
+            }
+
+            // the campsite's own availability: its open window and the nights the owner blocked off
+            val campsiteData = transaction.get(campsitesRef.document(reservation.campsiteId)).data
+                ?: throw IllegalStateException("That campsite no longer exists.")
+            val availability = campsiteData["availability"] as? Map<*, *>
+            fun dateOf(key: String) = (availability?.get(key) as? String)
+                ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+            val availableFrom = dateOf("availableFrom")
+            val availableUntil = dateOf("availableUntil")
+            val blocked = (availability?.get("unavailableDates") as? List<*>)
+                ?.filterIsInstance<String>()?.toSet() ?: emptySet()
+
+            check((availableFrom == null || !reservation.checkIn.isBefore(availableFrom)) &&
+                    (availableUntil == null || !reservation.checkOut.isAfter(availableUntil))) {
+                "The campsite isn't open for those dates."            }
+            transaction.set(reservationDoc, ReservationRepository.toMap(reservation))
+            transaction.update(
+                lotteryDoc,
+                mapOf("claimedIds" to FieldValue.arrayUnion(reservation.userId))
+            )
+            null
+        }
+            .addOnSuccessListener { onResult(null) }
+            .addOnFailureListener { onResult(it.message ?: "Something went wrong.") }
+    }
+
+    // a winner gives their win up, which also releases every campsite in the lottery
+    fun declineWin(
+        lotteryId: String,
+        userId: String,
+        onResult: (String?) -> Unit = {}
+    ) {
+        if (lotteryId.isBlank()) {
+            onResult("Invalid lottery ID.")
+            return
+        }
+        val lotteryDoc = lotteriesRef.document(lotteryId)
+
+        db.runTransaction { transaction ->
+            val lottery = transaction.readLottery(lotteryDoc)
+            check(lottery.hasOpenOffer(userId)) {
+                "There's no open offer to decline."
+            }
+            transaction.update(
+                lotteryDoc,
+                mapOf("declinedIds" to FieldValue.arrayUnion(userId))
+            )
+            null
+        }
+            .addOnSuccessListener { onResult(null) }
+            .addOnFailureListener { onResult(it.message ?: "Something went wrong.") }
+    }
+
+    private fun Transaction.readLottery(document: DocumentReference): Lottery {
+        val snapshot = get(document)
+        val data = snapshot.data
+            ?: throw IllegalStateException("Lottery not found.")
+        return documentToLottery(snapshot.id, data)
+            ?: throw IllegalStateException("Could not read lottery.")
+    }
+
     // check if entries are open
     private fun isOpen(lottery: Lottery): Boolean {
         val now = LocalDateTime.now()
@@ -243,7 +343,9 @@ class LotteryRepository {
             "drawAt" to lottery.drawAt.toString(),
             "stayFrom" to lottery.stayFrom.toString(),
             "stayUntil" to lottery.stayUntil.toString(),
-            "nights" to lottery.nights
+            "nights" to lottery.nights,
+            "claimedIds" to lottery.claimedIds,
+            "declinedIds" to lottery.declinedIds
         )
     }
 
@@ -254,7 +356,7 @@ class LotteryRepository {
         )
     }
 
-    // conver firebase data back into lotto
+    // convert firebase data back into lotto
     private fun documentToLottery(
         id: String,
         data: Map<String, Any?>
@@ -297,7 +399,11 @@ class LotteryRepository {
                     data["stayUntil"] as? String
                         ?: LocalDate.now().plusMonths(2).toString()
                 ),
-                nights = (data["nights"] as? Number)?.toInt() ?: 2
+                nights = (data["nights"] as? Number)?.toInt() ?: 2,
+                claimedIds = (data["claimedIds"] as? List<*>)
+                    ?.filterIsInstance<String>() ?: emptyList(),
+                declinedIds = (data["declinedIds"] as? List<*>)
+                    ?.filterIsInstance<String>() ?: emptyList()
             )
         } catch (e: Exception) {
             null

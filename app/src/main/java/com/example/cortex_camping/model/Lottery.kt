@@ -39,7 +39,9 @@ data class Lottery(
     val drawAt: LocalDateTime = LocalDateTime.now().plusDays(2),
     val stayFrom: LocalDate = LocalDate.now().plusMonths(1), // winners pick their dates inside this window
     val stayUntil: LocalDate = LocalDate.now().plusMonths(2),
-    val nights: Int = 2 // length of the stay a winner gets
+    val nights: Int = 2, // length of the stay a winner gets
+    val claimedIds: List<String> = emptyList(), // winners who picked a campsite and dates
+    val declinedIds: List<String> = emptyList() // winners who declined the campsite after winning
 ) {
     @get:Exclude
     val isFull: Boolean
@@ -57,6 +59,26 @@ data class Lottery(
     fun waitlistPosition(userId: String): Int = waitlist.indexOfFirst { it.userId == userId } + 1
 
     fun hasWon(userId: String): Boolean = userId in winnerIds
+
+    // true while a winner still has to either book dates or decline
+    fun hasOpenOffer(userId: String): Boolean = hasWon(userId) && userId !in claimedIds && userId !in declinedIds
+
+    // every check-in date where a full stay fits inside the stay window and none of its nights are
+    // taken. [taken] is a set of nights (a stay from the 5th to the 7th uses the nights of the 5th and 6th)
+    // [openFrom] and [openUntil] are the campsite's own availability window, which can be narrower than the stay window
+
+    fun availableCheckIns(
+        taken: Set<LocalDate>,
+        openFrom: LocalDate = LocalDate.MIN,
+        openUntil: LocalDate = LocalDate.MAX
+    ): List<LocalDate> {
+        val first = if (openFrom.isAfter(stayFrom)) openFrom else stayFrom
+        val last = if (openUntil.isBefore(stayUntil)) openUntil else stayUntil
+        return generateSequence(first) { it.plusDays(1) }
+            .takeWhile { !it.plusDays(nights.toLong()).isAfter(last) }
+            .filter { start -> (0 until nights).none { start.plusDays(it.toLong()) in taken } }
+            .toList()
+    }
 
     fun outcomeFor(userId: String): LotteryOutcome = when {
         hasWon(userId) -> LotteryOutcome.WON
