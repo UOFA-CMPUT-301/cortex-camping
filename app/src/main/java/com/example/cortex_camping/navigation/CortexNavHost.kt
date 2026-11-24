@@ -12,6 +12,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
@@ -35,8 +36,9 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.navigation.navDeepLink
 import com.example.cortex_camping.BuildConfig
-import com.example.cortex_camping.model.AppNotification
 import com.example.cortex_camping.model.Campsite
+import com.example.cortex_camping.model.Lottery
+import com.example.cortex_camping.model.AppNotification
 import com.example.cortex_camping.model.NotificationTarget
 import com.example.cortex_camping.ui.components.CortexBottomBar
 import com.example.cortex_camping.ui.components.CortexButton
@@ -245,6 +247,7 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
                 arguments = listOf(navArgument("choose") { type = NavType.StringType; nullable = true; defaultValue = null }),
             ) { entry ->
                 var chooseFor by rememberSaveable { mutableStateOf(entry.arguments?.getString("choose")) }
+                var campsiteFor by rememberSaveable { mutableStateOf<String?>(null) } // set once a winner picks a campsite
                 ReservationsScreen(
                     upcoming = vm.upcomingReservations,
                     past = vm.pastReservations,
@@ -257,18 +260,33 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
                     onMessageOwner = { nav.navigate(Routes.chat(it.campsiteId)) },
                     onCancel = { vm.cancelReservation(it); toast("Reservation cancelled") },
                     onChooseDates = { chooseFor = it.id },
-                    onDecline = { vm.declineOffer(it); toast("Offer declined") },
+                    onDecline = { vm.declineOffer(it) { error -> toast(error ?: "Offer declined") } },
                     onRate = { r, stars -> vm.rate(r, stars) },
                 )
                 chooseFor?.let { id ->
                     val lottery = vm.bookingOffers.firstOrNull { it.id == id }
-                    val site = lottery?.let(vm::offerCampsite)
-                    if (lottery == null || site == null) chooseFor = null
-                    else ChooseDatesDialog(
-                        lottery = lottery, campsite = site, taken = vm.takenDates(site),
-                        onConfirm = { s, e -> vm.chooseDates(lottery, s, e); chooseFor = null; toast("Dates confirmed") },
-                        onDismiss = { chooseFor = null },
-                    )
+                    // a multi-campsite win asks which campsite first; a single-campsite lottery skips that step
+                    val siteId = lottery?.let { campsiteFor ?: it.campsiteIds.singleOrNull() }
+                    val site = siteId?.let(vm::campsite)
+                    when {
+                        lottery == null -> { chooseFor = null; campsiteFor = null }
+                        siteId == null -> CampsitePickerDialog(
+                            lottery = lottery,
+                            campsite = vm::campsite,
+                            openStays = { vm.openCheckIns(lottery, it).size },
+                            onPick = { campsiteFor = it.campsiteId },
+                            onDismiss = { chooseFor = null },
+                        )
+                        site == null -> { chooseFor = null; campsiteFor = null }
+                        else -> ChooseDatesDialog(
+                            lottery = lottery, campsite = site, taken = vm.takenDates(site),
+                            onConfirm = { s, e ->
+                                vm.chooseDates(lottery, site.campsiteId, s, e) { error -> toast(error ?: "Dates confirmed") }
+                                chooseFor = null; campsiteFor = null
+                            },
+                            onDismiss = { chooseFor = null; campsiteFor = null },
+                        )
+                    }
                 }
             }
             composable(Routes.LOTTERIES) {
@@ -553,6 +571,32 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
             if (role == Role.Owner) vm.ensureOwner()
             nav.enterRole(role, vm.isRegistered)
         }, onDismiss = { showRolePicker = false })
+    }
+}
+
+// shown to winners of a lottery that covers several campsites: pick the one you want, the rest are released
+@Composable
+private fun CampsitePickerDialog(
+    lottery: Lottery,
+    campsite: (String) -> Campsite?,
+    openStays: (Campsite) -> Int,
+    onPick: (Campsite) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    InfoDialog("Choose a campsite", onDismiss) {
+        Text("Pick the campsite you want. Choosing one releases your spot at the others.")
+        lottery.campsiteIds.mapNotNull(campsite).forEach { site ->
+            val open = openStays(site)
+            if (open > 0) {
+                CortexButton(
+                    "${site.name} ($open start dates open)", { onPick(site) },
+                    Modifier.fillMaxWidth(),
+                    style = CortexButtonStyle.OutlinedBrand,
+                )
+            } else {
+                Text("${site.name}: no dates left")
+            }
+        }
     }
 }
 

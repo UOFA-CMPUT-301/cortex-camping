@@ -30,6 +30,7 @@ import com.example.cortex_camping.repository.LotteryRepository
 import com.example.cortex_camping.repository.MessageRepository
 import com.example.cortex_camping.repository.CampsiteImageRepository
 import com.example.cortex_camping.repository.CampsiteRepository
+import com.example.cortex_camping.repository.ReservationRepository
 import java.util.UUID
 import com.example.cortex_camping.repository.AdminModerationRepository
 
@@ -48,6 +49,10 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
         super.onCleared()
     }
 
+    private val reservationRepository = ReservationRepository()
+
+    // TODO: return false until the entrant, owner and admin repositories have loaded,
+    //  otherwise the app picks its start screen before it knows who the user is
     val isLoaded: Boolean get() = true
 
     var role by mutableStateOf(Role.User)
@@ -80,8 +85,17 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     fun campsite(id: String): Campsite? = campsites.firstOrNull { it.campsiteId == id }
 
-    // TODO: add the nights already booked by other reservations at this campsite
-    fun takenDates(campsite: Campsite): Set<LocalDate> = campsite.availability.unavailableDates
+    // nights the owner don't allow plus nights already booked are taken
+    fun takenDates(campsite: Campsite): Set<LocalDate> =
+        campsite.availability.unavailableDates + reservationRepository.bookedDates(campsite.campsiteId)
+
+    // check-in dates a winner is allowed to book after winning
+    fun openCheckIns(lottery: Lottery, campsite: Campsite): List<LocalDate> =
+        lottery.availableCheckIns(
+            takenDates(campsite),
+            campsite.availability.availableFrom,
+            campsite.availability.availableUntil
+        )
 
     // Profile
 
@@ -99,25 +113,62 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     // Reservations (entrant)
 
-    // TODO: the entrant's active reservations that aren't cancelled
-    val upcomingReservations: List<Reservation> get() = emptyList()
+    private val myReservations: List<Reservation>
+        get() = reservationRepository.reservations.filter { it.userId == deviceId }
 
-    // TODO: the entrant's past reservations
-    val pastReservations: List<Reservation> get() = emptyList()
+    // the entrant's active reservations
+    val upcomingReservations: List<Reservation>
+        get() = myReservations.filter {
+            it.status != ReservationStatus.CANCELLED && !it.checkOut.isBefore(LocalDate.now())
+        }
 
-    // TODO: lotteries the entrant won but hasn't picked dates for yet
-    val bookingOffers: List<Lottery> get() = emptyList()
+    // the entrant's past reservations
+    val pastReservations: List<Reservation>
+        get() = myReservations.filter { it.checkOut.isBefore(LocalDate.now()) }
+
+    // lotteries the entrant won but hasn't picked dates for yet
+    val bookingOffers: List<Lottery>
+        get() = lotteryRepository.lotteries.filter { it.hasOpenOffer(deviceId) }
 
     fun offerCampsite(lottery: Lottery): Campsite? = lottery.entryFor(deviceId)?.campsiteId?.let(::campsite)
 
-    // TODO: create the Reservation for this lottery win and let the owner know
-    fun chooseDates(lottery: Lottery, checkIn: LocalDate, checkOut: LocalDate) {}
+    // books the win: the winner picks one of the lottery's campsites and their dates.
+    // The other campsites in the lottery are simply not taken.
+    // TODO: let the owner know
+    fun chooseDates(
+        lottery: Lottery,
+        campsiteId: String,
+        checkIn: LocalDate,
+        checkOut: LocalDate,
+        onResult: (String?) -> Unit = {}
+    ) {
+        val reservation = Reservation(
+            bookingId = UUID.randomUUID().toString(),
+            campsiteId = campsiteId,
+            userId = deviceId,
+            lotteryId = lottery.id,
+            checkIn = checkIn,
+            checkOut = checkOut
+        )
+        // check so the user gets an instant message; claimWin re-checks everything on the server
+        val site = campsite(campsiteId)
+        if (site != null && (0 until reservation.nights).any { checkIn.plusDays(it.toLong()) in takenDates(site) }) {
+            onResult("Some of those nights are already taken.")
+            return
+        }
+        lotteryRepository.claimWin(lottery.id, reservation, onResult)
+    }
 
-    // TODO: give the lottery win up
-    fun declineOffer(lottery: Lottery) {}
+    // give the lottery win up
+    fun declineOffer(lottery: Lottery, onResult: (String?) -> Unit = {}) {
+        lotteryRepository.declineWin(lottery.id, deviceId, onResult)
+    }
 
-    // TODO: EntrantRepository.cancelReservation, then let the owner know
-    fun cancelReservation(reservation: Reservation) {}
+    // marks the reservation cancelled and frees its nights
+    // TODO: let the owner know
+    fun cancelReservation(reservation: Reservation) {
+        reservationRepository.cancel(reservation)
+    }
 
     // TODO: save the rating on the reservation and update the campsite's average
     fun rate(reservation: Reservation, stars: Int) {}
@@ -308,7 +359,7 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     // Chat
 
-    // TODO: messagesz between this entrant and the campsite's owner, oldest first
+    // TODO: messages between this entrant and the campsite's owner, oldest first
     fun conversation(campsiteId: String, entrantId: String): List<Message> =
         messageRepository.conversation(campsiteId, entrantId)
 
