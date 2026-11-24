@@ -173,10 +173,16 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
         lotteryRepository.declineWin(lottery.id, deviceId, onResult)
     }
 
-    // marks the reservation cancelled and frees its nights
+    // marks the reservation cancelled and frees its nights, then sends the entrant
     // TODO: let the owner know
-    fun cancelReservation(reservation: Reservation) {
-        reservationRepository.cancel(reservation)
+    fun cancelReservation(reservation: Reservation, onResult: (String?) -> Unit = {}) {
+        reservationRepository.cancel(reservation) { error ->
+            if (error == null) {
+                val name = campsite(reservation.campsiteId)?.name ?: "your campsite"
+                notificationRepository.send(ReservationNotifications.cancelled(reservation, name))
+            }
+            onResult(error)
+        }
     }
 
     // TODO: save the rating on the reservation and update the campsite's average
