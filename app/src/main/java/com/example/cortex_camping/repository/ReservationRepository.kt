@@ -36,8 +36,15 @@ class ReservationRepository {
      * @param campsiteId the ID of the campsite
      * @return a set of dates that are currently booked at the campsite
      */
-    fun bookedDates(campsiteId: String): Set<LocalDate> =
-        _nights.filter { it.first == campsiteId }.map { it.second }.toSet()
+    // every night that is booked at this campsite
+    fun bookedDates(campsiteId: String): Set<LocalDate> {
+        val locked = _nights.filter { it.first == campsiteId }.map { it.second }
+        // also count active reservations directly, in case one was saved without its night locks
+        val reserved = _reservations
+            .filter { it.campsiteId == campsiteId && it.status != ReservationStatus.CANCELLED }
+            .flatMap { r -> (0 until r.nights).map { r.checkIn.plusDays(it.toLong()) } }
+        return (locked + reserved).toSet()
+    }
 
     init {
         reservationsRef.addSnapshotListener { snapshot, error ->

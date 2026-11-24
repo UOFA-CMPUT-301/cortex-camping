@@ -259,13 +259,14 @@ class LotteryRepository {
     }
 
     /**
-     * Updates a lottery in a transaction, so two people can't take the same spot.
+     * A winner books their stay: picks one of the lottery's campsites and their dates.
+     * Everything happens in one transaction, so if any night was just taken by someone else
+     * nothing is saved and the win stays open.
      *
-     * @param lotteryId the lottery to change
-     * @param onResult called when done
-     * @param update makes the change
+     * @param lotteryId the lottery that was won
+     * @param reservation the stay the winner picked
+     * @param onResult called when done, with an error message or null
      */
-    // a winner books their stay: picks one of the lottery's campsites and their dates.
     fun claimWin(
         lotteryId: String,
         reservation: Reservation,
@@ -308,7 +309,38 @@ class LotteryRepository {
 
             check((availableFrom == null || !reservation.checkIn.isBefore(availableFrom)) &&
                     (availableUntil == null || !reservation.checkOut.isAfter(availableUntil))) {
-                "The campsite isn't open for those dates."            }
+                "The campsite isn't open for those dates."
+            }
+            val nights = (0 until reservation.nights).map { i ->
+                reservation.checkIn.plusDays(i.toLong())
+            }
+            check(nights.none { it.toString() in blocked }) {
+                "The owner has blocked some of those nights."
+            }
+
+            // other reservations: every booked night has a lock document, so if one exists
+            // someone else already has that night. All reads must happen before the first write.
+            val lockDocs = nights.map { night ->
+                night to nightsRef.document(
+                    ReservationRepository.nightId(reservation.campsiteId, night)
+                )
+            }
+            lockDocs.forEach { (_, doc) ->
+                check(!transaction.get(doc).exists()) {
+                    "Some of those nights were just booked. Please pick different dates."
+                }
+            }
+
+            lockDocs.forEach { (night, doc) ->
+                transaction.set(
+                    doc,
+                    mapOf(
+                        "campsiteId" to reservation.campsiteId,
+                        "date" to night.toString(),
+                        "bookingId" to reservation.bookingId
+                    )
+                )
+            }
             transaction.set(reservationDoc, ReservationRepository.toMap(reservation))
             transaction.update(
                 lotteryDoc,
@@ -353,14 +385,6 @@ class LotteryRepository {
             ?: throw IllegalStateException("Lottery not found.")
         return documentToLottery(snapshot.id, data)
             ?: throw IllegalStateException("Could not read lottery.")
-    }
-
-    // check if entries are open
-    private fun isOpen(lottery: Lottery): Boolean {
-        val now = LocalDateTime.now()
-
-        return !now.isBefore(lottery.opensAt) &&
-                !now.isAfter(lottery.closesAt)
     }
 
     private fun updateLottery(

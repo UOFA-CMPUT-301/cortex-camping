@@ -150,6 +150,12 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
             checkIn = checkIn,
             checkOut = checkOut
         )
+        // check so the user gets an instant message; claimWin re-checks everything on the server
+        val site = campsite(campsiteId)
+        if (site != null && (0 until reservation.nights).any { checkIn.plusDays(it.toLong()) in takenDates(site) }) {
+            onResult("Some of those nights are already taken.")
+            return
+        }
         lotteryRepository.claimWin(lottery.id, reservation, onResult)
     }
 
