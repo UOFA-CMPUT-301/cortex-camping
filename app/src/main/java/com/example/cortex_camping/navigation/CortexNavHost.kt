@@ -258,8 +258,7 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
                     onProfileClick = { nav.navigate(Routes.PROFILE) },
                     onNotificationsClick = { nav.navigate(Routes.NOTIFICATIONS) },
                     onMessageOwner = { nav.navigate(Routes.chat(it.campsiteId)) },
-                    onCancel = { vm.cancelReservation(it); toast("Reservation cancelled") },
-                    onChooseDates = { chooseFor = it.id },
+                    onCancel = { vm.cancelReservation(it) { error -> toast(error ?: "Reservation cancelled") } },                    onChooseDates = { chooseFor = it.id },
                     onDecline = { vm.declineOffer(it) { error -> toast(error ?: "Offer declined") } },
                     onRate = { r, stars -> vm.rate(r, stars) },
                 )
