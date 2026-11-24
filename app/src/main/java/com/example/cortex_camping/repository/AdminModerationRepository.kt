@@ -94,7 +94,7 @@ class AdminModerationRepository {
      *
      * The transaction fails if the campsite is missing or its image differs from
      * [expectedImage], so an image replaced since review is not removed accidentally.
-     * External image files are not deleted.
+     * Deleting the image file itself is left to the caller.
      *
      * @param id Firestore campsite document ID.
      * @param expectedImage Image value shown when the user confirmed removal.
