@@ -435,9 +435,9 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
                                 // by route: the user may have already backed out while it saved
                                 nav.popBackStack(Routes.OWNER_CAMPSITE_FORM, inclusive = true)
                             },
-                            onError = {
+                            onError = { message ->
                                 saving = false
-                                toast("Couldn't use that image. Nothing was saved, please pick a different one.")
+                                toast(message)
                             },
                         )
                     },

@@ -21,12 +21,14 @@ import com.example.cortex_camping.ui.screens.owner.GuestReservation
 import com.example.cortex_camping.util.DeviceUtils
 import com.example.cortex_camping.util.ImageUtils
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import com.example.cortex_camping.model.LotteryEntry
 import com.example.cortex_camping.model.LotteryStatus
 import com.example.cortex_camping.repository.LotteryRepository
 import com.example.cortex_camping.repository.MessageRepository
+import com.example.cortex_camping.repository.CampsiteImageRepository
 import com.example.cortex_camping.repository.CampsiteRepository
 import com.example.cortex_camping.repository.ReservationRepository
 import java.util.UUID
@@ -39,6 +41,7 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     val deviceId: String = DeviceUtils.getDeviceId(application)
 
     private val campsiteRepository = CampsiteRepository()
+    private val imageRepository = CampsiteImageRepository()
     private val moderationRepository = AdminModerationRepository()
 
     override fun onCleared() {
@@ -252,36 +255,58 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     val ownerReservations: List<GuestReservation> get() = emptyList()
 
     /**
-     * Shrinks a newly picked photo into the campsite, then writes it. If the photo can't be
-     * processed, [onError] runs and nothing is saved: a device-local Uri is useless in Firestore.
+     * Uploads a newly picked photo to Firebase Storage, then writes the campsite with its URL. If
+     * the photo can't be read or uploaded, [onError] gets a message and nothing is saved: a
+     * device-local Uri is useless in Firestore. Photos that predate Firebase Storage are moved
+     * there the next time their campsite is saved.
      */
-    fun saveCampsite(campsite: Campsite, onSaved: () -> Unit = {}, onError: () -> Unit = {}) {
+    fun saveCampsite(campsite: Campsite, onSaved: () -> Unit = {}, onError: (String) -> Unit = {}) {
         val campsiteId = campsite.campsiteId.ifBlank { UUID.randomUUID().toString() }
         val ownerId = campsite.ownerId.ifBlank { deviceId }
         val base = campsite.copy(campsiteId = campsiteId, ownerId = ownerId)
         val image = base.imageUrl
+        val storedInDocument = ImageUtils.decodeDataUri(image)
 
-        if (image == null || !ImageUtils.isLocalUri(image)) {
+        if (image == null || (storedInDocument == null && !ImageUtils.isLocalUri(image))) {
             campsiteRepository.addCampsite(base)
             onSaved()
             return
         }
+
+        fun fail(message: String, error: Exception) {
+            Log.e("CortexViewModel", "$message (campsite $campsiteId)", error)
+            // an image that was already saved like this shouldn't block other edits
+            if (image == campsite(campsiteId)?.imageUrl) {
+                campsiteRepository.addCampsite(base)
+                onSaved()
+            } else {
+                onError(message)
+            }
+        }
+
         viewModelScope.launch {
-            runCatching { ImageUtils.encodeAsDataUri(getApplication(), image) }
-                .onSuccess { encoded ->
-                    campsiteRepository.addCampsite(base.copy(imageUrl = encoded))
-                    onSaved()
-                }
-                .onFailure { error ->
-                    Log.e("CortexViewModel", "Couldn't process image for campsite $campsiteId", error)
-                    // an older save may have stored a local Uri; don't let it block other edits
-                    if (image == campsite(campsiteId)?.imageUrl) {
-                        campsiteRepository.addCampsite(base)
-                        onSaved()
-                    } else {
-                        onError()
-                    }
-                }
+            val jpeg = try {
+                storedInDocument ?: ImageUtils.encodeAsJpeg(getApplication(), image)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                fail("Couldn't use that image. Nothing was saved, please pick a different one.", e)
+                return@launch
+            }
+            val uploaded = try {
+                imageRepository.upload(campsiteId, jpeg)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                fail("Couldn't upload the image. Nothing was saved, please try again.", e)
+                return@launch
+            }
+            val replaced = campsite(campsiteId)?.imageUrl
+            // whichever photo the campsite doesn't end up using is deleted
+            campsiteRepository.addCampsite(base.copy(imageUrl = uploaded)) { error ->
+                imageRepository.delete(if (error == null) replaced else uploaded)
+            }
+            onSaved()
         }
     }
 
@@ -354,14 +379,20 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     // Completion callbacks report the server result to the confirmation flow.
     fun deleteCampsite(campsite: Campsite, onResult: (String?) -> Unit) {
-        moderationRepository.deleteCampsite(campsite.campsiteId, onResult)
+        moderationRepository.deleteCampsite(campsite.campsiteId) { error ->
+            if (error == null) imageRepository.delete(campsite.imageUrl)
+            onResult(error)
+        }
     }
 
     val campsitesWithImages: List<Campsite> get() = campsites.filter { !it.imageUrl.isNullOrBlank() }
 
-    // Remove only the reviewed image field, without overwriting campsite edits.
+    // Remove only the reviewed image, without overwriting campsite edits.
     fun deleteImage(campsite: Campsite, onResult: (String?) -> Unit) {
-        moderationRepository.deleteImage(campsite.campsiteId, campsite.imageUrl, onResult)
+        moderationRepository.deleteImage(campsite.campsiteId, campsite.imageUrl) { error ->
+            if (error == null) imageRepository.delete(campsite.imageUrl)
+            onResult(error)
+        }
     }
 
     // TODO: include notifications once notification storage is implemented
