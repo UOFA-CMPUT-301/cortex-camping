@@ -33,6 +33,8 @@ import com.example.cortex_camping.repository.CampsiteRepository
 import com.example.cortex_camping.repository.ReservationRepository
 import java.util.UUID
 import com.example.cortex_camping.repository.AdminModerationRepository
+import com.example.cortex_camping.repository.NotificationRepository
+import com.example.cortex_camping.model.ReservationNotifications
 
 enum class Role(val label: String) { User("Camper"), Owner("Campsite owner"), Admin("Admin") }
 
@@ -50,6 +52,7 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private val reservationRepository = ReservationRepository()
+    private val notificationRepository = NotificationRepository()
 
     // TODO: return false until the entrant, owner and admin repositories have loaded,
     //  otherwise the app picks its start screen before it knows who the user is
@@ -156,8 +159,14 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
             onResult("Some of those nights are already taken.")
             return
         }
-        lotteryRepository.claimWin(lottery.id, reservation, onResult)
-    }
+        lotteryRepository.claimWin(lottery.id, reservation) { error ->
+            if (error == null) {
+                notificationRepository.send(
+                    ReservationNotifications.confirmed(reservation, site?.name ?: "your campsite")
+                )
+            }
+            onResult(error)
+        }    }
 
     // give the lottery win up
     fun declineOffer(lottery: Lottery, onResult: (String?) -> Unit = {}) {
@@ -334,8 +343,11 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     // Notifications
 
-    // TODO: notifications sent to this device as an entrant
-    val myNotifications: List<AppNotification> get() = emptyList()
+    // notifications sent to this device as an entrant, newest first
+    val myNotifications: List<AppNotification>
+        get() = notificationRepository.notifications
+            .filter { it.recipientId == deviceId && !it.forOwner }
+            .sortedByDescending { it.sentAt }
 
     // TODO: notifications sent to this device as an owner (forOwner = true)
     val ownerReceived: List<AppNotification> get() = emptyList()
@@ -346,8 +358,11 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     val unreadCount: Int get() = myNotifications.count { !it.read }
     val ownerUnreadCount: Int get() = ownerReceived.count { !it.read }
 
-    // TODO: mark these notifications as read
-    fun markRead(notifications: List<AppNotification>) {}
+
+    // marks these notifications as read, skipping ones that already are
+    fun markRead(notifications: List<AppNotification>) {
+        notificationRepository.markRead(notifications.filter { !it.read }.map { it.id })
+    }
 
     fun notificationsCsv(notifications: List<AppNotification>): String = buildString {
         appendLine("title,detail,link,sent,read")
