@@ -16,7 +16,8 @@ class CampsiteRepository {
     val campsites: List<Campsite>
         get() = _campsites
 
-    fun addCampsite(campsite: Campsite) {
+    /** Updates the local list immediately; [onResult] gets null once the server has the write, or the error. */
+    fun addCampsite(campsite: Campsite, onResult: (Exception?) -> Unit = {}) {
         val id = campsite.campsiteId.ifBlank { campsitesRef.document().id }
         val campsiteWithId = campsite.copy(campsiteId = id)
         val idx = _campsites.indexOfFirst { it.campsiteId == id }
@@ -28,9 +29,11 @@ class CampsiteRepository {
         campsitesRef.document(id).set(campsiteToMap(campsiteWithId))
             .addOnSuccessListener {
                 Log.d("CampsiteRepository", "Successfully written campsite $id to Firestore")
+                onResult(null)
             }
             .addOnFailureListener { error ->
                 Log.e("CampsiteRepository", "Error writing campsite $id to Firestore", error)
+                onResult(error)
             }
     }
 

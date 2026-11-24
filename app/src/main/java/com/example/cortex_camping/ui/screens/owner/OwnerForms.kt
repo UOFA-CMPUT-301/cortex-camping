@@ -99,7 +99,7 @@ fun CampsiteFormScreen(
     var price by rememberSaveable { mutableStateOf(existing?.price?.let { "%.2f".format(it) } ?: "") }
     var tags by rememberSaveable { mutableStateOf(existing?.tag?.joinToString(", ") ?: "") }
     var rulesUrl by rememberSaveable { mutableStateOf(existing?.rulesUrl ?: "") }
-    // only the picked Uri is saveable: stored photos are too big for saved instance state
+    // only the picked Uri is saveable: the stored image comes from the campsite itself
     var pickedImage by rememberSaveable { mutableStateOf<String?>(null) }
     val imageUrl = pickedImage ?: existing?.imageUrl
     var availableFrom by remember { mutableStateOf(existing?.availability?.availableFrom ?: today) }
