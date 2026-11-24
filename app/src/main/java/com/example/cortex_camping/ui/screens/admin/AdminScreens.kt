@@ -186,7 +186,7 @@ fun AdminUsersScreen(
     pending?.let { key ->
         val u = users.firstOrNull { it.key == key }
         if (u == null) { pending = null; return@let }
-        CortexConfirmDialog("Delete user?", "${u.name}'s profile and personal information will be removed.", "Delete user", destructive = true,
+        CortexConfirmDialog("Delete user?", "${u.name}'s ${if (u.isOwner) "owner" else "camper"} profile will be removed. Existing campsites and messages are kept.", "Delete user", destructive = true,
             onConfirm = { onDelete(u); pending = null }, onDismiss = { pending = null })
     }
 }
@@ -236,7 +236,7 @@ fun AdminLogsScreen(logs: List<CommunicationLog>, onBack: () -> Unit) {
     var viewing by rememberSaveable { mutableStateOf<String?>(null) }
     val visible = logs.filter {
         (filter == 0 || it.type == if (filter == 1) LogType.Notification else LogType.Message) &&
-            listOf(it.subject, it.route, it.message).any { f -> f.contains(query, true) }
+            listOf(it.subject, it.route, it.meta, it.message).any { f -> f.contains(query.trim(), true) }
     }
     AdminScaffold("Communications Log", onBack) {
         searchItem("Search logs", "Search sender, recipient or message", query) { query = it }
@@ -249,8 +249,12 @@ fun AdminLogsScreen(logs: List<CommunicationLog>, onBack: () -> Unit) {
         item { SectionTitle("Sent activity · " + listOf("All users", "Notifications", "Messages")[filter]) }
         items(visible, key = { it.id }) { log ->
             InfoActionCard(
-                title = "${log.type.label} · ${log.subject}", lines = listOf(log.route, log.meta),
-                body = log.message, actionLabel = "View details", onAction = { viewing = log.id }, headerHeight = 126.dp,
+                title = log.message,
+                lines = emptyList(),
+                body = "",
+                actionLabel = "View details",
+                onAction = { viewing = log.id },
+                headerHeight = 10.dp,
             )
         }
     }

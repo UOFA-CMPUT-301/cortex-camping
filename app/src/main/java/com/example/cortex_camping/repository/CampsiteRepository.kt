@@ -88,7 +88,8 @@ class CampsiteRepository {
 
         return Campsite(
             ownerId = data["ownerId"] as? String ?: "",
-            campsiteId = (data["campsiteId"] as? String)?.ifBlank { id } ?: id,
+            // Use the document path so edits and deletions target the record we read.
+            campsiteId = id,
             name = data["name"] as? String ?: "",
             description = data["description"] as? String ?: "",
             tag = (data["tag"] as? List<*>)?.filterIsInstance<String>() ?: emptyList(),

@@ -154,11 +154,12 @@ fun CampsiteLotteryCard(
     modifier: Modifier = Modifier,
 ) {
     val colors = CortexTheme.colors
-    val waitlistText = if (lottery.hasWaitlist) "Waitlist: ${lottery.waitlist.size}/${lottery.waitlistCapacity}" else "Waitlist off"
+    val waitlistText = if (lottery.hasWaitlist) "Waitlist: ${lottery.waitlistSummary}" else "Waitlist off"
     val slotsLeft = lottery.capacity - lottery.entries.size
-    val waitlistLeft = lottery.waitlistCapacity - lottery.waitlist.size
+    val waitlistLeft = lottery.waitlistLimit - lottery.waitlist.size
     val drawDate = formatDate(lottery.drawAt.toLocalDate())
-    val open = lottery.status == LotteryStatus.ONGOING && LocalDateTime.now().isBefore(lottery.closesAt)
+    val open = lottery.isRegistrationOpen()
+    val opensLater = lottery.status == LotteryStatus.ONGOING && LocalDateTime.now().isBefore(lottery.opensAt)
 
     data class Ui(val title: String, val body: String, val link: String, val action: @Composable () -> Unit)
 
@@ -171,6 +172,10 @@ fun CampsiteLotteryCard(
             "Waitlisted · position ${lottery.waitlistPosition(userId)}", "Not entered in the draw. Waiting for a lottery slot.", "Manage entry ›",
         ) { CortexButton("Leave waitlist", onLeaveWaitlist, style = CortexButtonStyle.Danger, size = CortexButtonSize.XSmall) }
 
+        opensLater -> Ui(
+            "Registration not open yet", "Entries open ${formatDate(lottery.opensAt.toLocalDate())} at ${formatTime(lottery.opensAt).lowercase()}.", "Lottery details ›",
+        ) { CortexButton("Not open yet", {}, enabled = false) }
+
         !open -> Ui(
             "Registration closed", "This lottery is no longer taking entries.", "Lottery details ›",
         ) { CortexButton("Closed", {}, enabled = false) }
@@ -180,7 +185,7 @@ fun CampsiteLotteryCard(
         ) { CortexButton("Enter lottery", onEnter) }
 
         lottery.hasWaitlist && waitlistLeft > 0 -> Ui(
-            "Lottery full · $waitlistLeft waitlist places available", "Join the waitlist for a slot. You are not in the draw.", "Manage entry ›",
+            if (lottery.hasWaitlistLimit) "Lottery full · $waitlistLeft waitlist places available" else "Lottery full · waitlist open", "Join the waitlist for a slot. You are not in the draw.", "Manage entry ›",
         ) { CortexButton("Join waitlist", onJoinWaitlist, size = CortexButtonSize.XSmall) }
 
         else -> Ui(
@@ -192,7 +197,7 @@ fun CampsiteLotteryCard(
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(lottery.name, style = MaterialTheme.typography.bodySmall.copy(letterSpacing = 0.sp), color = colors.textPrimary)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                StatusPill(if (open) "Open" else "Closed")
+                StatusPill(if (open) "Open" else if (opensLater) "Upcoming" else "Closed")
                 Text("Draw $drawDate", style = MaterialTheme.typography.bodySmall, color = colors.textSecondary)
             }
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {

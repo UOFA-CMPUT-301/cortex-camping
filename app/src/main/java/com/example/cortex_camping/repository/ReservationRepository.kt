@@ -30,7 +30,12 @@ class ReservationRepository {
     val reservations: List<Reservation>
         get() = _reservations
 
-    // every night that is booked at this campsite
+    /**
+     * Returns all booked dates for a specific campsite.
+     *
+     * @param campsiteId the ID of the campsite
+     * @return a set of dates that are currently booked at the campsite
+     */
     fun bookedDates(campsiteId: String): Set<LocalDate> =
         _nights.filter { it.first == campsiteId }.map { it.second }.toSet()
 
@@ -53,7 +58,14 @@ class ReservationRepository {
         }
     }
 
-    // marks the reservation cancelled and frees its nights for other people
+    /**
+     * Cancels a reservation and frees all nights associated with it.
+     * Updates the reservation status to CANCELLED and deletes its booked
+     * nights from Firestore.
+     *
+     * @param reservation the reservation to cancel
+     * @param onResult called with null if successful, or an error message if the operation fails
+     */
     fun cancel(reservation: Reservation, onResult: (String?) -> Unit = {}) {
         val batch = db.batch()
         batch.update(
@@ -70,8 +82,22 @@ class ReservationRepository {
     }
 
     companion object {
+        /**
+         * Generates a unique document ID for a booked campsite night.
+         *
+         * @param campsiteId the ID of the campsite
+         * @param night the booked night
+         * @return a document ID combining the campsite ID and date
+         */
         fun nightId(campsiteId: String, night: LocalDate) = "${campsiteId}_$night"
 
+        /**
+         * Converts a reservation into a map for storing in Firestore.
+         * Dates are saved as ISO-formatted strings.
+         *
+         * @param reservation the reservation to convert
+         * @return a map containing the reservation fields
+         */
         fun toMap(reservation: Reservation): Map<String, Any> = mapOf(
             "bookingId" to reservation.bookingId,
             "campsiteId" to reservation.campsiteId,
@@ -84,6 +110,12 @@ class ReservationRepository {
             "rating" to reservation.rating
         )
 
+        /**
+         * Creates a reservation from a Firestore data map.
+         *
+         * @param data the reservation fields retrieved from Firestore
+         * @return the reconstructed reservation, or null if the data is invalid
+         */
         fun fromMap(data: Map<String, Any?>): Reservation? {
             return try {
                 Reservation(
