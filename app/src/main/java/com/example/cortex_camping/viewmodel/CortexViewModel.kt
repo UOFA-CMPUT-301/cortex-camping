@@ -33,6 +33,8 @@ import com.example.cortex_camping.repository.CampsiteRepository
 import com.example.cortex_camping.repository.ReservationRepository
 import java.util.UUID
 import com.example.cortex_camping.repository.AdminModerationRepository
+import com.example.cortex_camping.model.past
+import com.example.cortex_camping.model.upcoming
 
 enum class Role(val label: String) { User("Camper"), Owner("Campsite owner"), Admin("Admin") }
 
@@ -118,13 +120,11 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     // the entrant's active reservations
     val upcomingReservations: List<Reservation>
-        get() = myReservations.filter {
-            it.status != ReservationStatus.CANCELLED && !it.checkOut.isBefore(LocalDate.now())
-        }
+        get() = myReservations.upcoming()
 
     // the entrant's past reservations
     val pastReservations: List<Reservation>
-        get() = myReservations.filter { it.checkOut.isBefore(LocalDate.now()) }
+        get() = myReservations.past()
 
     // lotteries the entrant won but hasn't picked dates for yet
     val bookingOffers: List<Lottery>
@@ -166,8 +166,8 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     // marks the reservation cancelled and frees its nights
     // TODO: let the owner know
-    fun cancelReservation(reservation: Reservation) {
-        reservationRepository.cancel(reservation)
+    fun cancelReservation(reservation: Reservation, onResult: (String?) -> Unit = {}) {
+        reservationRepository.cancel(reservation, deviceId, onResult)
     }
 
     // TODO: save the rating on the reservation and update the campsite's average

@@ -73,17 +73,30 @@ class ReservationRepository {
      * @param reservation the reservation to cancel
      * @param onResult called with null if successful, or an error message if the operation fails
      */
-    fun cancel(reservation: Reservation, onResult: (String?) -> Unit = {}) {
-        val batch = db.batch()
-        batch.update(
-            reservationsRef.document(reservation.bookingId),
-            "status", ReservationStatus.CANCELLED.name
-        )
-        for (i in 0 until reservation.nights) {
-            val night = reservation.checkIn.plusDays(i.toLong())
-            batch.delete(nightsRef.document(nightId(reservation.campsiteId, night)))
+    fun cancel(reservation: Reservation, userId: String, onResult: (String?) -> Unit = {}) {
+        val reservationDoc = reservationsRef.document(reservation.bookingId)
+
+        db.runTransaction { transaction ->
+            val data = transaction.get(reservationDoc).data
+                ?: throw IllegalStateException("Reservation not found.")
+            // use the saved copy, not the one on screen, which may be out of date
+            val saved = fromMap(data)
+                ?: throw IllegalStateException("Could not read reservation.")
+
+            check(saved.userId == userId) { "You can only cancel your own reservations." }
+            check(saved.status != ReservationStatus.CANCELLED) { "This reservation is already cancelled." }
+            check(!saved.checkOut.isBefore(LocalDate.now())) { "Past stays can't be cancelled." }
+
+            // only free nights that belong to this booking: someone else may have
+            // booked them since an earlier cancel
+            val mine = (0 until saved.nights)
+                .map { i -> nightsRef.document(nightId(saved.campsiteId, saved.checkIn.plusDays(i.toLong()))) }
+                .filter { transaction.get(it).getString("bookingId") == saved.bookingId }
+
+            transaction.update(reservationDoc, "status", ReservationStatus.CANCELLED.name)
+            mine.forEach { transaction.delete(it) }
+            null
         }
-        batch.commit()
             .addOnSuccessListener { onResult(null) }
             .addOnFailureListener { onResult(it.message ?: "Could not cancel the reservation.") }
     }

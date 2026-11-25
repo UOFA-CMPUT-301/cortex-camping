@@ -29,4 +29,19 @@ data class Reservation(
         // this function returns true if two reservations overlap, otherwise false
         return checkIn.isBefore(other.checkOut) && checkOut.isAfter(other.checkIn)
     }
+
+    // current reservations or those that are coming, these are what we can cancel
+    fun isActive(today: LocalDate = LocalDate.now()): Boolean =
+        status != ReservationStatus.CANCELLED && !checkOut.isBefore(today)
+
+    // finished or cancelled reservations, displayed in the history list
+    fun isPast(today: LocalDate = LocalDate.now()): Boolean = !isActive(today)
 }
+
+    // list of active reservations, most recent first
+    fun List<Reservation>.upcoming(today: LocalDate = LocalDate.now()) =
+        filter { it.isActive(today) }.sortedBy { it.checkIn }
+
+    // list of past reservation, most recent first
+    fun List<Reservation>.past(today: LocalDate = LocalDate.now()) =
+        filter { it.isPast(today) }.sortedByDescending { it.checkOut }
