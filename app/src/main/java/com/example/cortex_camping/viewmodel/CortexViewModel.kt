@@ -35,6 +35,7 @@ import java.util.UUID
 import com.example.cortex_camping.repository.AdminModerationRepository
 import com.example.cortex_camping.repository.NotificationRepository
 import com.example.cortex_camping.model.ReservationNotifications
+import com.example.cortex_camping.model.CampsiteRating
 
 enum class Role(val label: String) { User("Camper"), Owner("Campsite owner"), Admin("Admin") }
 
@@ -185,8 +186,15 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // TODO: save the rating on the reservation and update the campsite's average
-    fun rate(reservation: Reservation, stars: Int) {}
+    // saves the rating on the reservation and updates the campsite's average (US 01.13.01)
+    fun rate(reservation: Reservation, stars: Int, onResult: (String?) -> Unit = {}) {
+        val problem = CampsiteRating.problem(reservation, stars, LocalDate.now())
+        if (problem != null) {
+            onResult(problem)
+            return
+        }
+        reservationRepository.rate(reservation, stars, onResult)
+    }
 
     // Lotteries (entrant)
 

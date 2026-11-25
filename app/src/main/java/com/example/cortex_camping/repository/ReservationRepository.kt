@@ -18,7 +18,7 @@ import com.example.cortex_camping.model.ReservationStatus
 import com.google.firebase.Firebase
 import com.google.firebase.firestore.firestore
 import java.time.LocalDate
-
+import com.example.cortex_camping.model.CampsiteRating
 class ReservationRepository {
     private val db = Firebase.firestore
     private val reservationsRef = db.collection("reservations")
@@ -86,6 +86,38 @@ class ReservationRepository {
         batch.commit()
             .addOnSuccessListener { onResult(null) }
             .addOnFailureListener { onResult(it.message ?: "Could not cancel the reservation.") }
+    }
+
+    /**
+     * Saves the entrant's star rating on their reservation and updates the campsite's
+     * average rating
+     *
+     * @param reservation the stay being rated
+     * @param stars the rating, from 1 to 5
+     * @param onResult called with null if it was saved, or an error message
+     */
+    fun rate(reservation: Reservation, stars: Int, onResult: (String?) -> Unit = {}) {
+        val reservationDoc = reservationsRef.document(reservation.bookingId)
+        val campsiteDoc = db.collection("campsite").document(reservation.campsiteId)
+        db.runTransaction { transaction ->
+            val stay = transaction.get(reservationDoc)
+            val campsite = transaction.get(campsiteDoc)
+            check(stay.exists()) { "That reservation no longer exists." }
+            check(campsite.exists()) { "That campsite no longer exists." }
+
+            val previous = (stay.get("rating") as? Number)?.toInt() ?: 0
+            val summary = CampsiteRating.update(
+                average = (campsite.get("rating") as? Number)?.toDouble() ?: 0.0,
+                count = (campsite.get("ratingCount") as? Number)?.toInt() ?: 0,
+                stars = stars,
+                previousStars = previous
+            )
+            transaction.update(reservationDoc, "rating", stars)
+            transaction.update(campsiteDoc, mapOf("rating" to summary.average, "ratingCount" to summary.count))
+            null
+        }
+            .addOnSuccessListener { onResult(null) }
+            .addOnFailureListener { onResult(it.message ?: "Could not save your rating.") }
     }
 
     companion object {
