@@ -260,8 +260,7 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
                     onMessageOwner = { nav.navigate(Routes.chat(it.campsiteId)) },
                     onCancel = { vm.cancelReservation(it) { error -> toast(error ?: "Reservation cancelled") } },                    onChooseDates = { chooseFor = it.id },
                     onDecline = { vm.declineOffer(it) { error -> toast(error ?: "Offer declined") } },
-                    onRate = { r, stars -> vm.rate(r, stars) },
-                )
+                    onRate = { r, stars -> vm.rate(r, stars) { error -> toast(error ?: "Thanks for rating your stay") } },                )
                 chooseFor?.let { id ->
                     val lottery = vm.bookingOffers.firstOrNull { it.id == id }
                     // a multi-campsite win asks which campsite first; a single-campsite lottery skips that step
