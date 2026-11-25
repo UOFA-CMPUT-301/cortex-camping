@@ -30,6 +30,7 @@ import com.example.cortex_camping.repository.MessageRepository
 import com.example.cortex_camping.repository.CampsiteRepository
 import java.util.UUID
 import com.example.cortex_camping.repository.AdminModerationRepository
+import com.example.cortex_camping.repository.EntrantRepository
 
 enum class Role(val label: String) { User("Camper"), Owner("Campsite owner"), Admin("Admin") }
 
@@ -37,6 +38,8 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     val deviceId: String = DeviceUtils.getDeviceId(application)
 
+
+    private val entrantRepository = EntrantRepository()
     private val campsiteRepository = CampsiteRepository()
     private val moderationRepository = AdminModerationRepository()
 
@@ -54,8 +57,8 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     // Current user
 
-    // TODO: look up deviceId in EntrantRepository
-    val entrant: Entrant? get() = null
+    // looks up deviceId in the entrant database
+    val entrant: Entrant? get() = entrantRepository.entrants.firstOrNull { it.id == deviceId }
 
     // TODO: look up deviceId in CampsiteOwnerRepository
     val owner: CampsiteOwner? get() = null
@@ -82,17 +85,32 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     // Profile
 
-    // TODO: save a new Entrant with EntrantRepository.saveOrUpdateEntrant
-    fun register(name: String, email: String, phone: String) {}
+    // saves entrant data to the database, using deviceID as their id
+    fun register(name: String, email: String, phone: String) {
+        val newEntrant = Entrant(
+            id = deviceId,
+            name = name,
+            email = email,
+            phoneNumber = phone,
+        )
+        entrantRepository.saveOrUpdateEntrant(deviceId, newEntrant)
+    }
+    // updates user profile in firebase
+    fun updateProfile(name: String, email: String, phone: String) {
+        val current = entrant ?: return
+        val updated = current.copy(name = name, email = email, phoneNumber = phone)
+        entrantRepository.saveOrUpdateEntrant(deviceId, updated)
+    }
 
-    // TODO: save the changes to the current entrant
-    fun updateProfile(name: String, email: String, phone: String) {}
+    // saves the entrant's notification settings
+    fun updatePrefs(updated: Entrant) {
+        entrantRepository.saveOrUpdateEntrant(deviceId, updated)
+    }
 
-    // TODO: save the entrant's notification settings
-    fun updatePrefs(updated: Entrant) {}
-
-    // TODO: EntrantRepository.deleteEntrant
-    fun deleteProfile() {}
+    // deletes user profile from firebase
+    fun deleteProfile() {
+        entrantRepository.deleteEntrant(deviceId)
+    }
 
     // Reservations (entrant)
 

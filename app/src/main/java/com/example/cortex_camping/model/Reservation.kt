@@ -14,8 +14,8 @@ data class Reservation(
     val bookingId: String = "",
     val campsiteId: String = "",
     val userId: String = "",
-    val checkIn: LocalDate,
-    val checkOut: LocalDate,
+    val checkIn: LocalDate = LocalDate.now(),
+    val checkOut: LocalDate = LocalDate.now(),
     val guests: Int = 1,
     val status: ReservationStatus = ReservationStatus.CONFIRMED,
     val rating: Int = 0 // 0 means the entrant hasn't rated the stay yet

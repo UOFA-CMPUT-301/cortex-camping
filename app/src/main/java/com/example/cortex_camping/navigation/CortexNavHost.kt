@@ -46,6 +46,8 @@ import com.example.cortex_camping.ui.components.LocalRoleSwitcher
 import com.example.cortex_camping.ui.components.OwnerBottomBar
 import com.example.cortex_camping.ui.components.OwnerTab
 import com.example.cortex_camping.ui.components.TopLevelTab
+import com.example.cortex_camping.ui.screens.WelcomeScreen
+import com.example.cortex_camping.ui.screens.LoginRoleScreen
 import com.example.cortex_camping.ui.screens.BrowseScreen
 import com.example.cortex_camping.ui.screens.CampsiteDetailsScreen
 import com.example.cortex_camping.ui.screens.ChatScreen
@@ -76,6 +78,8 @@ import com.example.cortex_camping.viewmodel.Role
 import kotlinx.coroutines.launch
 
 object Routes {
+    const val WELCOME = "welcome"
+    const val LOGIN_ROLE = "login_role"
     const val REGISTER = "register"
     const val BROWSE = "browse"
     const val RESERVATIONS = "reservations?choose={choose}"
@@ -111,7 +115,7 @@ object Routes {
 }
 
 private fun homeFor(role: Role, registered: Boolean) = when (role) {
-    Role.User -> if (registered) Routes.BROWSE else Routes.REGISTER
+    Role.User -> if (registered) Routes.BROWSE else Routes.WELCOME
     Role.Owner -> Routes.OWNER_CAMPSITES
     Role.Admin -> Routes.ADMIN
 }
@@ -170,11 +174,8 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         return
     }
-    // Decided once, when the profiles first load. Later role changes navigate explicitly.
-    val startDestination = remember {
-        vm.role = vm.startingRole()
-        homeFor(vm.role, vm.isRegistered)
-    }
+    val startDestination = Routes.WELCOME // app defaults to the Welcome page on app launch
+
     val nav = rememberNavController()
     val backStack by nav.currentBackStackEntryAsState()
     val route = backStack?.destination?.route
@@ -221,6 +222,20 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
             startDestination = startDestination,
             modifier = Modifier.padding(bottom = inner.calculateBottomPadding()),
         ) {
+            composable(Routes.WELCOME) {
+                WelcomeScreen(
+                    onRegisterClick = { nav.navigate(Routes.REGISTER) },
+                    onLoginClick = {
+                        if (vm.isRegistered) {
+                            nav.navigate(Routes.LOGIN_ROLE) {
+                                popUpTo(Routes.WELCOME) { inclusive = true }
+                            }
+                        } else {
+                            nav.navigate(Routes.REGISTER)
+                        }
+                    }
+                )
+            }
             composable(Routes.REGISTER) {
                 RegisterScreen(
                     onRegister = { name, email, phone ->
@@ -229,6 +244,26 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
                     },
                     onPolicy = { /* TODO: open the policy & guidelines page */ },
                     onEditAvatar = { /* TODO: pick and upload a profile picture */ },
+                )
+            }
+            composable(Routes.LOGIN_ROLE) {
+                LoginRoleScreen(
+                    onSelectRole = { selectedRole ->
+                        vm.role = selectedRole
+                        if (selectedRole == Role.Owner) {
+                            vm.ensureOwner()
+                            nav.navigate(Routes.OWNER_CAMPSITES) {
+                                popUpTo(Routes.WELCOME) { inclusive = true }
+                            }
+                        } else {
+                            if (vm.isRegistered) {
+                                nav.navigate(Routes.BROWSE) {
+                                    popUpTo(Routes.WELCOME) { inclusive = true }
+                                }
+                            }
+                        }
+                    },
+                    onBack = { nav.popBackStack() },
                 )
             }
             composable(Routes.BROWSE) {
@@ -325,7 +360,7 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
                     onEditProfile = { nav.navigate(Routes.EDIT_PROFILE) },
                     onDeleteProfile = {
                         vm.deleteProfile()
-                        nav.navigate(Routes.REGISTER) { popUpTo(0) { inclusive = true } }
+                        nav.navigate(Routes.WELCOME) { popUpTo(0) { inclusive = true } } // user is taken back to the welcome page after choosing to delete profile
                     },
                     onPolicy = { /* TODO: open the policy & guidelines page */ },
                     onHelp = { /* TODO: open the help docs */ },
@@ -555,6 +590,7 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
         }, onDismiss = { showRolePicker = false })
     }
 }
+
 
 @Composable
 private fun RolePickerDialog(current: Role, onPick: (Role) -> Unit, onDismiss: () -> Unit) {
