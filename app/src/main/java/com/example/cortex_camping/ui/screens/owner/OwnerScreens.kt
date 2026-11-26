@@ -17,8 +17,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -63,11 +66,13 @@ import com.example.cortex_camping.ui.components.formatRating
 import com.example.cortex_camping.ui.components.ManagementCard
 import com.example.cortex_camping.ui.components.QrCodeDialog
 import com.example.cortex_camping.ui.components.ResultsHeading
+import com.example.cortex_camping.ui.components.RoleSwitchPill
 import com.example.cortex_camping.ui.components.SectionTitle
 import com.example.cortex_camping.ui.components.nightsGuests
 import com.example.cortex_camping.ui.screens.NotificationFeedScreen
 import com.example.cortex_camping.ui.theme.CortexPalette
 import com.example.cortex_camping.ui.theme.CortexTheme
+import com.example.cortex_camping.viewmodel.Role
 import java.time.LocalDate
 import java.time.LocalDateTime
 
@@ -77,6 +82,9 @@ data class GuestReservation(val reservation: Reservation, val guestName: String)
 @Composable
 private fun OwnerTabScaffold(
     title: String,
+    currentRole: Role = Role.Owner,
+    onRoleSwitch: (Role) -> Unit = {},
+    onProfileClick: () -> Unit = {},
     onNotifications: () -> Unit,
     unread: Int,
     content: LazyListContent,
@@ -84,7 +92,25 @@ private fun OwnerTabScaffold(
     val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     Scaffold(
         modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
-        topBar = { CortexMediumTopBar(title, actions = { BellAction(onNotifications, unread) }, scrollBehavior = scroll) },
+        topBar = {
+            CortexMediumTopBar(
+                title,
+                navigationIcon = {
+                    RoleSwitchPill(currentRole = currentRole, onSwitchRole = onRoleSwitch)
+                },
+                actions = {
+                    IconButton(onClick = onProfileClick) {
+                        Icon(
+                            Icons.Outlined.AccountCircle,
+                            contentDescription = "Profile and settings",
+                            tint = CortexTheme.colors.textPrimary
+                        )
+                    }
+                    BellAction(onNotifications, unread)
+                },
+                scrollBehavior = scroll,
+            )
+        },
         containerColor = CortexTheme.colors.surfaceBase,
         contentWindowInsets = WindowInsets(0),
     ) { inner ->
@@ -113,6 +139,9 @@ fun OwnerCampsitesScreen(
     hasOngoingLottery: (Campsite) -> Boolean,
     bookedDates: (Campsite) -> Set<LocalDate>,
     unread: Int,
+    currentRole: Role,
+    onRoleSwitch: (Role) -> Unit,
+    onProfileClick: () -> Unit,
     onNotifications: () -> Unit,
     onAdd: () -> Unit,
     onView: (Campsite) -> Unit,
@@ -123,7 +152,7 @@ fun OwnerCampsitesScreen(
     var datesFor by rememberSaveable { mutableStateOf<String?>(null) }
     val visible = if (tab == 0) campsites else campsites.filter(hasOngoingLottery)
 
-    OwnerTabScaffold("My Campsites", onNotifications, unread) {
+    OwnerTabScaffold("My Campsites", currentRole, onRoleSwitch, onProfileClick, onNotifications, unread) {
         item { CortexSegmentedToggle(listOf("All campsites", "Lottery ongoing"), tab, { tab = it }, Modifier.padding(bottom = 4.dp)) }
         item { HeadingWithAction("Your campsites · ${visible.size}", "Add campsite", onAdd) }
         if (visible.isEmpty()) item {
@@ -218,6 +247,9 @@ fun OwnerReservationsScreen(
     reservations: List<GuestReservation>,
     campsite: (String) -> Campsite?,
     unread: Int,
+    currentRole: Role,
+    onRoleSwitch: (Role) -> Unit,
+    onProfileClick: () -> Unit,
     onNotifications: () -> Unit,
     onMessage: (GuestReservation) -> Unit,
     onSetStatus: (GuestReservation, ReservationStatus) -> Unit,
@@ -235,7 +267,7 @@ fun OwnerReservationsScreen(
     }.sortedBy { it.reservation.checkIn }
     val heading = listOf("Upcoming reservations", "Past reservations", "Cancelled reservations")[tab]
 
-    OwnerTabScaffold("Reservations", onNotifications, unread) {
+    OwnerTabScaffold("Reservations", currentRole, onRoleSwitch, onProfileClick, onNotifications, unread) {
         item { CortexSegmentedToggle(listOf("Upcoming", "Past", "Cancelled"), tab, { tab = it }, Modifier.padding(bottom = 4.dp)) }
         item { ResultsHeading(heading, "${visible.size} booking${if (visible.size == 1) "" else "s"}") }
         items(visible, key = { it.reservation.bookingId }) { item ->
@@ -287,6 +319,9 @@ fun OwnerLotteriesScreen(
     campsite: (String) -> Campsite?,
     entrantName: (String) -> String,
     unread: Int,
+    currentRole: Role,
+    onRoleSwitch: (Role) -> Unit,
+    onProfileClick: () -> Unit,
     onNotifications: () -> Unit,
     onCreate: () -> Unit,
     onUpdate: (Lottery) -> Unit,
@@ -298,7 +333,7 @@ fun OwnerLotteriesScreen(
     var drawFor by rememberSaveable { mutableStateOf<String?>(null) }
     val visible = if (tab == 0) lotteries else lotteries.filter { it.status == LotteryStatus.ONGOING }
 
-    OwnerTabScaffold("Lotteries", onNotifications, unread) {
+    OwnerTabScaffold("Lotteries", currentRole, onRoleSwitch, onProfileClick, onNotifications, unread) {
         item { CortexSegmentedToggle(listOf("All lotteries", "Ongoing"), tab, { tab = it }, Modifier.padding(bottom = 4.dp)) }
         item { HeadingWithAction("Your lotteries · ${visible.size}", "Create lottery", onCreate) }
         if (visible.isEmpty()) item {

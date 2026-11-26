@@ -36,6 +36,13 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.cortex_camping.ui.theme.CortexTheme
+import com.example.cortex_camping.viewmodel.Role
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
+import androidx.compose.ui.Alignment
+import com.example.cortex_camping.ui.theme.CortexPalette
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -68,6 +75,44 @@ fun CortexMediumTopBar(
 val LocalRoleSwitcher = androidx.compose.runtime.staticCompositionLocalOf<(() -> Unit)?> { null }
 
 @Composable
+fun RoleSwitchPill(
+    currentRole: Role,
+    onSwitchRole: (Role) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val targetRole = if(currentRole == Role.User) Role.Owner else Role.User
+    val label = if (currentRole == Role.User) "Camper" else "Campsite Owner"
+
+    Surface(
+        onClick = { onSwitchRole(targetRole) },
+        shape = RoundedCornerShape(100.dp),
+        color = CortexTheme.colors.surfaceLow,
+        border = BorderStroke(1.dp, CortexTheme.colors.borderSubtle),
+        modifier = modifier.height(36.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(
+                imageVector = if (currentRole == Role.User) Icons.Outlined.LocationOn else Icons.Outlined.AccountCircle,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = CortexPalette.BrandPrimary,
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = CortexTheme.colors.textPrimary,
+            )
+        }
+    }
+}
+
+
+@Composable
 fun BellAction(onClick: () -> Unit, unread: Int = 0) {
     IconButton(onClick = onClick) {
         BadgedBox(badge = { if (unread > 0) Badge(containerColor = MaterialTheme.colorScheme.primary) }) {
@@ -87,6 +132,8 @@ fun BackAction(onBack: () -> Unit) {
 @Composable
 fun CortexHomeTopBar(
     title: String,
+    currentRole: Role = Role.User,
+    onRoleSwitch:(Role) -> Unit = {},
     onProfileClick: () -> Unit,
     onNotificationsClick: () -> Unit,
     unreadNotifications: Int = 0,
@@ -95,11 +142,14 @@ fun CortexHomeTopBar(
     CortexMediumTopBar(
         title = title,
         navigationIcon = {
-            IconButton(onClick = onProfileClick) {
-                Icon(Icons.Outlined.AccountCircle, contentDescription = "Profile and settings", tint = CortexTheme.colors.textPrimary)
-            }
+            RoleSwitchPill(currentRole = currentRole, onSwitchRole = onRoleSwitch)
         },
-        actions = { BellAction(onNotificationsClick, unreadNotifications) },
+        actions = {
+            IconButton(onClick = onProfileClick) {
+                Icon(Icons.Outlined.AccountCircle, contentDescription = "Profile", tint = CortexTheme.colors.textPrimary)
+            }
+            BellAction(onNotificationsClick, unreadNotifications)
+        },
         scrollBehavior = scrollBehavior,
     )
 }
