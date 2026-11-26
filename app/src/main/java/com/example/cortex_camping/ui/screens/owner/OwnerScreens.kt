@@ -69,7 +69,6 @@ import com.example.cortex_camping.ui.screens.NotificationFeedScreen
 import com.example.cortex_camping.ui.theme.CortexPalette
 import com.example.cortex_camping.ui.theme.CortexTheme
 import java.time.LocalDate
-import java.time.LocalDateTime
 
 data class GuestReservation(val reservation: Reservation, val guestName: String)
 
@@ -324,7 +323,7 @@ fun OwnerLotteriesScreen(
                     if (ongoing && l.hasWaitlist) CortexButton("View waitlist", { waitlistFor = l.id }, Modifier.weight(1f), style = CortexButtonStyle.OutlinedBrand)
                     else Box(Modifier.weight(1f))
                 }
-                if (ongoing && LocalDateTime.now().isAfter(l.closesAt)) {
+                if (l.canRunDraw()) {
                     CortexButton("Run draw", { drawFor = l.id }, Modifier.fillMaxWidth())
                 }
                 if (ongoing && l.hasWaitlist) {

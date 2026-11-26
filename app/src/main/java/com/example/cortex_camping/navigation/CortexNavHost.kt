@@ -543,7 +543,7 @@ fun CortexApp(
                     onCreate = { nav.navigate(Routes.ownerLotteryForm()) },
                     onUpdate = { nav.navigate(Routes.ownerLotteryForm(it.id)) },
                     onNotifyWaitlist = { vm.notifyWaitlist(it); toast("Notified ${it.waitlist.size} waitlisted users") },
-                    onRunDraw = { vm.runDraw(it); toast("Draw complete") },
+                    onRunDraw = { vm.runDraw(it) { error -> toast(error ?: "Drawing now. Results will show in a few seconds.") } },
                 )
             }
             composable(Routes.OWNER_LOTTERY_FORM, arguments = listOf(navArgument("id") { type = NavType.StringType; nullable = true; defaultValue = null })) { e ->
