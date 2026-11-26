@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AdminPanelSettings
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.material3.Card
@@ -37,6 +38,7 @@ import com.example.cortex_camping.viewmodel.Role
 @Composable
 fun LoginRoleScreen(
     onSelectRole: (Role) -> Unit,
+    roles: List<Role> = listOf(Role.Owner, Role.User),
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -73,19 +75,32 @@ fun LoginRoleScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            RoleSelectionCard(
-                title = "Campsite Owner",
-                subtitle = "List your campsites, manage availability, and host lotteries for campers.",
-                icon = Icons.Outlined.Storefront,
-                onClick = { onSelectRole(Role.Owner) },
-            )
+            if (Role.Owner in roles) {
+                RoleSelectionCard(
+                    title = "Campsite Owner",
+                    subtitle = "List your campsites, manage availability, and host lotteries for campers.",
+                    icon = Icons.Outlined.Storefront,
+                    onClick = { onSelectRole(Role.Owner) },
+                )
+            }
 
-            RoleSelectionCard(
-                title = "Camper",
-                subtitle = "Browse campsites, enter lotteries, and manage your reservations.",
-                icon = Icons.Outlined.Person,
-                onClick = { onSelectRole(Role.User) },
-            )
+            if (Role.User in roles) {
+                RoleSelectionCard(
+                    title = "Camper",
+                    subtitle = "Browse campsites, enter lotteries, and manage your reservations.",
+                    icon = Icons.Outlined.Person,
+                    onClick = { onSelectRole(Role.User) },
+                )
+            }
+
+            if (Role.Admin in roles) {
+                RoleSelectionCard(
+                    title = "Admin",
+                    subtitle = "Moderate campsites, users, images, and communications.",
+                    icon = Icons.Outlined.AdminPanelSettings,
+                    onClick = { onSelectRole(Role.Admin) },
+                )
+            }
         }
     }
 }
@@ -144,6 +159,18 @@ private fun LoginRoleScreenPreview() {
     CortexTheme {
         LoginRoleScreen(
             onSelectRole = {},
+            onBack = {},
+        )
+    }
+}
+
+@Preview(name = "Login Role Screen - Admin", showBackground = true)
+@Composable
+private fun LoginRoleScreenAdminPreview() {
+    CortexTheme {
+        LoginRoleScreen(
+            onSelectRole = {},
+            roles = Role.entries,
             onBack = {},
         )
     }
