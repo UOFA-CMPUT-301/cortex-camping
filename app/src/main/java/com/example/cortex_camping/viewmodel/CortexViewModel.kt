@@ -7,6 +7,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import com.example.cortex_camping.model.AppNotification
+import com.example.cortex_camping.model.NotificationKind
+import com.example.cortex_camping.model.NotificationTarget
 import com.example.cortex_camping.model.Campsite
 import com.example.cortex_camping.model.CampsiteOwner
 import com.example.cortex_camping.model.Entrant
@@ -365,8 +367,24 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
         lotteryRepository.saveLottery(lottery.copy(ownerId = lottery.ownerId.ifBlank { deviceId }), onResult)
     }
 
-    // TODO: send a notification to everyone on the waitlist
-    fun notifyWaitlist(lottery: Lottery) {}
+    // Send one in-app notification per waitlisted user.
+    fun notifyWaitlist(lottery: Lottery) {
+        lottery.waitlist.filter { it.userId.isNotBlank() }.distinctBy { it.userId }.forEach { entry ->
+            notificationRepository.send(
+                AppNotification(
+                    recipientId = entry.userId,
+                    senderId = deviceId,
+                    kind = NotificationKind.LOTTERY_UPDATED,
+                    title = "Lottery waitlist update",
+                    body = "You are on the waitlist for ${lottery.name}. Check the lottery for the latest details.",
+                    link = "View lottery →",
+                    campsiteId = entry.campsiteId,
+                    target = NotificationTarget.CAMPSITE_LOTTERY,
+                    forOwner = false
+                )
+            )
+        }
+    }
 
     // TODO: pick the winners, finalize the lottery and notify every entrant
     fun runDraw(lottery: Lottery) {}
@@ -448,13 +466,11 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // TODO: include notifications once notification storage is implemented
-    // TODO: improve formatting of log info (e.g. convert timestamp, use name instead of id)
+    // Both repositories expose live state, so the admin log updates as activity arrives.
     val communicationLogs: List<CommunicationLog>
-        get() = messageRepository.messages
-            .sortedByDescending { it.sentAt }
-            .map { message ->
-                CommunicationLog(
+        get() {
+            val messages = messageRepository.messages.map { message ->
+                message.sentAt to CommunicationLog(
                     id = "message-${message.id.ifBlank { "${message.campsiteId}-${message.entrantId}-${message.sentAt}" }}",
                     type = LogType.Message,
                     subject = "Campsite ${message.campsiteId}",
@@ -463,4 +479,18 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
                     message = message.text
                 )
             }
+            val notifications = notificationRepository.notifications.map { notification ->
+                notification.sentAt to CommunicationLog(
+                    id = "notification-${notification.id}",
+                    type = LogType.Notification,
+                    subject = notification.title,
+                    route = "Sender ${notification.senderId.ifBlank { "System" }} · Recipient ${notification.recipientId}",
+                    meta = "${if (notification.forOwner) "Owner" else "Camper"} · ${notification.kind} · ${notification.sentAt} · ${if (notification.read) "Read" else "Unread"}",
+                    message = notification.body
+                )
+            }
+            return (messages + notifications)
+                .sortedByDescending { it.first }
+                .map { it.second }
+        }
 }
