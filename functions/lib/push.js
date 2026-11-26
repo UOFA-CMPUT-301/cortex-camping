@@ -43,39 +43,25 @@ function pushMessage(fid, id, notification) {
 }
 
 /** Sends a notification document to its recipient's phone, if they have one and want it. */
-async function sendPush(db, messaging, id, notification, log = console) {
-  if (!notification.recipientId) {
-    log.info(`Not pushing ${id}: it has no recipientId`);
-    return false;
-  }
+async function sendPush(db, messaging, id, notification) {
+  if (!notification.recipientId) return;
   const deviceRef = db.collection("devices").doc(notification.recipientId);
   const [device, entrant] = await Promise.all([
     deviceRef.get(),
     db.collection("entrants").doc(notification.recipientId).get(),
   ]);
   const fid = device.get("fid");
-  if (!fid) {
-    log.info(`Not pushing ${id}: devices/${notification.recipientId} has no fid`);
-    return false;
-  }
-  if (!allowsPush(entrant.data(), notification)) {
-    log.info(`Not pushing ${id}: ${notification.recipientId}'s settings turn it off`);
-    return false;
-  }
+  if (!fid || !allowsPush(entrant.data(), notification)) return;
   try {
     await messaging.send(pushMessage(fid, id, notification));
-    log.info(`Pushed ${id} to ${notification.recipientId}`);
-    return true;
   } catch (error) {
     if (!/(installation-id|registration-token)-not-registered$/.test(error.code || "")) throw error;
-    log.info(`Removing the uninstalled device ${notification.recipientId}`);
-    // unless the app has registered again in the meantime
+    // the app was uninstalled, so forget the device unless it has registered again in the meantime
     await db.runTransaction(async (transaction) => {
       const current = await transaction.get(deviceRef);
       if (current.get("fid") === fid) transaction.delete(deviceRef);
     });
-    return false;
   }
 }
 
-module.exports = { allowsPush, pushMessage, sendPush };
+module.exports = { sendPush };
