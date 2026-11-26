@@ -33,6 +33,7 @@ import com.example.cortex_camping.repository.MessageRepository
 import com.example.cortex_camping.repository.CampsiteImageRepository
 import com.example.cortex_camping.repository.CampsiteRepository
 import com.example.cortex_camping.repository.ReservationRepository
+import com.example.cortex_camping.repository.EntrantRepository
 import java.util.UUID
 import com.example.cortex_camping.repository.AdminModerationRepository
 import com.example.cortex_camping.repository.NotificationRepository
@@ -45,6 +46,7 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     val deviceId: String = DeviceUtils.getDeviceId(application)
 
     private val campsiteRepository = CampsiteRepository()
+    private val entrantRepository = EntrantRepository()
     private val imageRepository = CampsiteImageRepository()
     private val moderationRepository = AdminModerationRepository()
 
@@ -78,8 +80,12 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     val isRegistered: Boolean get() = entrant != null
 
-    // TODO: look up the name in EntrantRepository
-    fun entrantName(id: String): String = "Camper"
+    // Match the stored entrant id field to the lottery entry userId.
+    fun entrantName(id: String): String = entrantRepository.entrants
+        .firstOrNull { it.id == id }
+        ?.name
+        ?.takeIf { it.isNotBlank() }
+        ?: "Unknown camper"
 
     // Moderation profiles provide owner names on the admin browse screens.
     fun ownerName(id: String): String = managedUsers.firstOrNull { it.isOwner && it.id == id }?.name ?: "Campsite owner"
@@ -274,8 +280,14 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     fun hasOngoingLottery(campsite: Campsite): Boolean =
         lotteriesFor(campsite.campsiteId).any { it.status == LotteryStatus.ONGOING }
 
-    // TODO: every entrant's reservations at the owner's campsites, with the guest's name
-    val ownerReservations: List<GuestReservation> get() = emptyList()
+    // All guests' reservations for campsites belonging to this owner.
+    val ownerReservations: List<GuestReservation>
+        get() {
+            val campsiteIds = myCampsites.map { it.campsiteId }.toSet()
+            return reservationRepository.reservations
+                .filter { it.campsiteId in campsiteIds }
+                .map { GuestReservation(it, entrantName(it.userId)) }
+        }
 
     /**
      * Uploads a newly picked photo to Firebase Storage, then writes the campsite with its URL. If
@@ -333,8 +345,32 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // TODO: save the new status on the entrant's reservation and notify them
-    fun setReservationStatus(item: GuestReservation, status: ReservationStatus) {}
+    // The owner screen supports rejecting pending stays and cancelling confirmed stays.
+    fun setReservationStatus(
+        item: GuestReservation,
+        status: ReservationStatus,
+        onResult: (String?) -> Unit = {}
+    ) {
+        val reservation = reservationRepository.reservations
+            .firstOrNull { it.bookingId == item.reservation.bookingId }
+        if (reservation == null) {
+            onResult("This reservation is no longer available.")
+            return
+        }
+        if (campsite(reservation.campsiteId)?.ownerId != deviceId) {
+            onResult("You can only manage reservations for your own campsites.")
+            return
+        }
+        if (status != ReservationStatus.CANCELLED) {
+            onResult("This status change is not supported.")
+            return
+        }
+        if (reservation.status == ReservationStatus.CANCELLED) {
+            onResult("This reservation is already cancelled.")
+            return
+        }
+        cancelReservation(reservation, onResult)
+    }
 
     // create the lottery (blank id) or save the changes
     fun saveLottery(lottery: Lottery, onResult: (String?) -> Unit = {}) {

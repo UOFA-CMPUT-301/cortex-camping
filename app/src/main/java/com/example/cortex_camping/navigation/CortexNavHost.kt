@@ -1,5 +1,6 @@
 package com.example.cortex_camping.navigation
 
+import com.example.cortex_camping.model.ReservationStatus
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -450,7 +451,12 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
                     unread = vm.ownerUnreadCount,
                     onNotifications = { nav.navigate(Routes.OWNER_NOTIFICATIONS) },
                     onMessage = { nav.navigate(Routes.ownerChat(it.reservation.campsiteId, it.reservation.userId)) },
-                    onSetStatus = { item, status -> vm.setReservationStatus(item, status); toast("${item.guestName} notified") },
+                    onSetStatus = { item, status ->
+                        vm.setReservationStatus(item, status) { error ->
+                            toast(error ?: if (item.reservation.status == ReservationStatus.PENDING)
+                                "Reservation rejected" else "Reservation cancelled")
+                        }
+                    },
                 )
             }
             composable(Routes.OWNER_LOTTERIES) {
