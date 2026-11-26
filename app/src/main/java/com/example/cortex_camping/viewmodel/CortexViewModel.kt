@@ -470,8 +470,9 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // TODO: pick the winners, finalize the lottery and notify every entrant
-    fun runDraw(lottery: Lottery) {}
+    fun runDraw(lottery: Lottery, onResult: (String?) -> Unit = {}) {
+        lotteryRepository.drawNow(lottery.id, onResult)
+    }
 
     fun bookedDates(campsite: Campsite): Set<LocalDate> = takenDates(campsite)
 
