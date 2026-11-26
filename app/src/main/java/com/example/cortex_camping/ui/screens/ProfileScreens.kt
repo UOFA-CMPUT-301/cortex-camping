@@ -41,6 +41,8 @@ import com.example.cortex_camping.ui.components.ProfileFormState
 import com.example.cortex_camping.ui.components.SectionTitle
 import com.example.cortex_camping.ui.components.SwitchRow
 import com.example.cortex_camping.ui.theme.CortexTheme
+import com.example.cortex_camping.ui.components.GuidelinesPolicy
+
 
 /** Figma frames "Profile & Settings" and "Profile & Settings · Delete confirmation" */
 @Composable
@@ -50,13 +52,13 @@ fun ProfileScreen(
     onBack: () -> Unit,
     onEditProfile: () -> Unit,
     onDeleteProfile: () -> Unit,
-    onPolicy: () -> Unit,
     onHelp: () -> Unit,
     contentPadding: PaddingValues = PaddingValues(),
     startWithDeleteDialog: Boolean = false,
 ) {
     val colors = CortexTheme.colors
     var confirmDelete by rememberSaveable { mutableStateOf(startWithDeleteDialog) }
+    var showGuidelines by rememberSaveable { mutableStateOf(false) }
     Scaffold(
         topBar = { CortexBackTopBar("Profile & Settings", onBack) },
         containerColor = colors.surfaceBase,
@@ -118,12 +120,15 @@ fun ProfileScreen(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SectionTitle("App policy & guidelines")
                 GroupedSurface {
-                    LinkListItem("Policy & Guidelines", "Privacy, app policies and community guidelines", onPolicy)
+                    LinkListItem("Policy & Guidelines", "Privacy, app policies and community guidelines",{ showGuidelines = true })
                     CortexDivider()
                     LinkListItem("Help Docs", "Answers and guidance for your next stay", onHelp)
                 }
             }
         }
+    }
+    if (showGuidelines) {
+        GuidelinesPolicy(onDismiss = { showGuidelines = false })
     }
     if (confirmDelete) {
         CortexConfirmDialog(
@@ -192,11 +197,11 @@ fun EditProfileScreen(
 @Composable
 fun RegisterScreen(
     onRegister: (name: String, email: String, phone: String) -> Unit,
-    onPolicy: () -> Unit,
     onEditAvatar: () -> Unit,
 ) {
     var form by rememberSaveable(stateSaver = ProfileFormSaver) { mutableStateOf(ProfileFormState("", "", "")) }
     val colors = CortexTheme.colors
+    var showGuidelines by rememberSaveable { mutableStateOf(false) }
     Column(
         Modifier.fillMaxSize().statusBarsPadding().imePadding().verticalScroll(rememberScrollState())
             .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
@@ -215,7 +220,7 @@ fun RegisterScreen(
             ) {
                 SectionTitle("App policy & guidelines", Modifier.padding(top = 8.dp))
                 GroupedSurface {
-                    LinkListItem("Policy & Guidelines", "Privacy, app policies and community guidelines", onPolicy)
+                    LinkListItem("Policy & Guidelines", "Privacy, app policies and community guidelines", { showGuidelines = true})
                 }
                 CortexButton(
                     "Register", { onRegister(form.fullName.trim(), form.email.trim(), form.phone.trim()) },
@@ -223,6 +228,9 @@ fun RegisterScreen(
                 )
             }
         }
+    }
+    if (showGuidelines) {
+        GuidelinesPolicy(onDismiss = { showGuidelines = false })
     }
 }
 
