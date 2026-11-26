@@ -205,7 +205,7 @@ fun SwitchRow(
 }
 
 @Composable
-fun ProfileAvatar(initials: String, modifier: Modifier = Modifier, size: Dp = 56.dp) {
+fun ProfileAvatar(initials: String, modifier: Modifier = Modifier, size: Dp = 56.dp, imageUrl: String? = null) {
     Box(
         modifier
             .size(size)
@@ -214,6 +214,14 @@ fun ProfileAvatar(initials: String, modifier: Modifier = Modifier, size: Dp = 56
         contentAlignment = Alignment.Center,
     ) {
         Text(initials, style = MaterialTheme.typography.titleMedium, color = CortexTheme.colors.onAccentContainer)
+        if (imageUrl != null) {
+            coil.compose.AsyncImage(
+                model = imageUrl,
+                contentDescription = "Profile picture",
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                modifier = Modifier.matchParentSize(),
+            )
+        }
     }
 }
 

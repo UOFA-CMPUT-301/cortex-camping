@@ -1,5 +1,9 @@
 package com.example.cortex_camping.ui.screens
 
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -24,6 +28,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.cortex_camping.model.Entrant
 import com.example.cortex_camping.ui.components.CortexBackTopBar
@@ -74,7 +79,7 @@ fun ProfileScreen(
                 CortexOutlinedCard {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            ProfileAvatar(entrant.initials)
+                            ProfileAvatar(entrant.initials, imageUrl = entrant.profileImageUrl)
                             Column(Modifier.weight(1f)) {
                                 Text("Full name", style = MaterialTheme.typography.bodySmall, color = colors.textSecondary)
                                 Text(entrant.name, style = MaterialTheme.typography.titleMedium, color = colors.textPrimary)
@@ -154,12 +159,14 @@ private fun LabeledValue(label: String, value: String, modifier: Modifier = Modi
 @Composable
 fun EditProfileScreen(
     entrant: Entrant,
-    onSave: (name: String, email: String, phone: String) -> Unit,
+    onSave: (name: String, email: String, phone: String, image: String?) -> Unit,
     onCancel: () -> Unit,
-    onEditAvatar: () -> Unit,
     contentPadding: PaddingValues = PaddingValues(),
+    saving: Boolean = false,
 ) {
     var form by rememberSaveable(stateSaver = ProfileFormSaver) { mutableStateOf(ProfileFormState(entrant.name, entrant.email, entrant.phoneNumber)) }
+    var image by rememberSaveable { mutableStateOf(entrant.profileImageUrl) }
+    val pickImage = rememberProfileImagePicker { image = it }
     Scaffold(
         topBar = { CortexBackTopBar("Edit Profile", onCancel) },
         containerColor = CortexTheme.colors.surfaceBase,
@@ -174,13 +181,15 @@ fun EditProfileScreen(
             ProfileFormCard(
                 state = form, onChange = { form = it },
                 initials = Entrant(name = form.fullName).initials,
-                avatarHint = "Using your initials · Profile picture is optional",
-                onEditAvatar = onEditAvatar,
+                imageUrl = image,
+                onPickImage = pickImage,
+                onRemoveImage = { image = null },
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     CortexButton(
-                        "Save Changes", { onSave(form.fullName.trim(), form.email.trim(), form.phone.trim()) },
-                        Modifier.weight(1f), enabled = form.isComplete,
+                        if (saving) "Saving..." else "Save Changes",
+                        { onSave(form.fullName.trim(), form.email.trim(), form.phone.trim(), image) },
+                        Modifier.weight(1f), enabled = form.isComplete && !saving,
                     )
                     CortexButton("Cancel Changes", onCancel, Modifier.weight(1f), style = CortexButtonStyle.Danger)
                 }
@@ -196,10 +205,11 @@ fun EditProfileScreen(
 /** Figma frame "Register" */
 @Composable
 fun RegisterScreen(
-    onRegister: (name: String, email: String, phone: String) -> Unit,
-    onEditAvatar: () -> Unit,
+    onRegister: (name: String, email: String, phone: String, image: String?) -> Unit,
 ) {
     var form by rememberSaveable(stateSaver = ProfileFormSaver) { mutableStateOf(ProfileFormState("", "", "")) }
+    var image by rememberSaveable { mutableStateOf<String?>(null) }
+    val pickImage = rememberProfileImagePicker { image = it }
     val colors = CortexTheme.colors
     var showGuidelines by rememberSaveable { mutableStateOf(false) }
     Column(
@@ -215,15 +225,16 @@ fun RegisterScreen(
             ProfileFormCard(
                 state = form, onChange = { form = it },
                 initials = Entrant(name = form.fullName).initials,
-                avatarHint = "Profile picture is optional",
-                onEditAvatar = onEditAvatar,
+                imageUrl = image,
+                onPickImage = pickImage,
+                onRemoveImage = { image = null },
             ) {
                 SectionTitle("App policy & guidelines", Modifier.padding(top = 8.dp))
                 GroupedSurface {
                     LinkListItem("Policy & Guidelines", "Privacy, app policies and community guidelines", { showGuidelines = true})
                 }
                 CortexButton(
-                    "Register", { onRegister(form.fullName.trim(), form.email.trim(), form.phone.trim()) },
+                    "Register", { onRegister(form.fullName.trim(), form.email.trim(), form.phone.trim(), image) },
                     Modifier.align(Alignment.CenterHorizontally), enabled = form.isComplete,
                 )
             }
@@ -232,6 +243,19 @@ fun RegisterScreen(
     if (showGuidelines) {
         GuidelinesPolicy(onDismiss = { showGuidelines = false })
     }
+}
+
+/** Opens the photo picker and passes the chosen photo's Uri to [onPicked]. */
+@Composable
+private fun rememberProfileImagePicker(onPicked: (String) -> Unit): () -> Unit {
+    val context = LocalContext.current
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            onPicked(uri.toString())
+        }
+    }
+    return { launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
 }
 
 @Composable

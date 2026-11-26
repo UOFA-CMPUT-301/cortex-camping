@@ -286,11 +286,10 @@ fun CortexApp(
             }
             composable(Routes.REGISTER) {
                 RegisterScreen(
-                    onRegister = { name, email, phone ->
-                        vm.register(name, email, phone)
+                    onRegister = { name, email, phone, image ->
+                        vm.register(name, email, phone, image, onImageError = { toast(it) })
                         nav.navigate(Routes.BROWSE) { popUpTo(Routes.REGISTER) { inclusive = true } }
                     },
-                    onEditAvatar = { /* TODO: pick and upload a profile picture */ },
                 )
             }
             composable(Routes.LOGIN_ROLE) {
@@ -428,11 +427,25 @@ fun CortexApp(
             }
             composable(Routes.EDIT_PROFILE) {
                 val entrant = vm.entrant ?: return@composable
+                var saving by remember { mutableStateOf(false) }
                 EditProfileScreen(
                     entrant = entrant,
-                    onSave = { name, email, phone -> vm.updateProfile(name, email, phone); nav.popBackStack(); toast("Profile updated") },
+                    saving = saving,
+                    onSave = { name, email, phone, image ->
+                        saving = true
+                        vm.updateProfile(
+                            name, email, phone, image,
+                            onSaved = {
+                                toast("Profile updated")
+                                nav.popBackStack(Routes.EDIT_PROFILE, inclusive = true)
+                            },
+                            onError = { message ->
+                                saving = false
+                                toast(message)
+                            },
+                        )
+                    },
                     onCancel = { nav.popBackStack() },
-                    onEditAvatar = { /* TODO: pick and upload a profile picture */ },
                 )
             }
             composable(Routes.NOTIFICATIONS) {

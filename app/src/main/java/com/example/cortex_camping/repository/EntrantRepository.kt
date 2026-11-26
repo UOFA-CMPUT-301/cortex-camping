@@ -17,10 +17,11 @@ class EntrantRepository {
     val entrants: List<Entrant>
         get() = _entrants
 
-    fun saveOrUpdateEntrant(deviceId: String, entrant: Entrant) {
+    fun saveOrUpdateEntrant(deviceId: String, entrant: Entrant, onComplete: (Exception?) -> Unit = {}) {
         // now generates a Firestore document with id based on Android device ID
         val entrantWithId = entrant.copy(id = deviceId)
         entrantsRef.document(deviceId).set(entrantWithId)
+            .addOnCompleteListener { onComplete(it.exception) }
     }
 
     fun deleteEntrant(entrantId: String) {
