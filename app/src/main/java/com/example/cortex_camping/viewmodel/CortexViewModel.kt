@@ -524,6 +524,18 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     // Admin
 
+    val ratedReservations: List<Reservation>
+        get() = reservationRepository.reservations.filter { it.rating != 0 }
+            .sortedByDescending { it.checkOut }
+
+    fun deleteReview(reservation: Reservation, onResult: (String?) -> Unit) {
+        if (!isAdmin) {
+            onResult("Switch to the admin role to remove ratings.")
+            return
+        }
+        moderationRepository.deleteReview(reservation.bookingId, reservation.rating, onResult)
+    }
+
     // Profiles displayed by the admin user browser.
     val managedUsers: List<ManagedUser> get() = moderationRepository.users
 
