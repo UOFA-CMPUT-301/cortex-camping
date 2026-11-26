@@ -72,7 +72,7 @@ fun formatRating(campsite: Campsite): String =
 @Composable
 fun CampsitePhoto(imageUrl: String?, modifier: Modifier = Modifier) {
     if (!imageUrl.isNullOrBlank()) {
-        // Coil can't read data URIs itself, so photos stored in Firestore are decoded here
+        // Coil can't read data URIs itself, so photos that predate Firebase Storage are decoded here
         val image = remember(imageUrl) { ImageUtils.decodeDataUri(imageUrl) ?: imageUrl }
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)

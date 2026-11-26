@@ -18,7 +18,8 @@ data class Reservation(
     val checkOut: LocalDate = LocalDate.now(),
     val guests: Int = 1,
     val status: ReservationStatus = ReservationStatus.CONFIRMED,
-    val rating: Int = 0 // 0 means the entrant hasn't rated the stay yet
+    val rating: Int = 0, // 0 means the entrant hasn't rated the stay yet
+    val lotteryId: String = "" // the lottery this stay was won in, blank if it wasn't from a lottery
 ) {
     @get:Exclude
     val nights: Int

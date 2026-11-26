@@ -21,16 +21,22 @@ import com.example.cortex_camping.ui.screens.owner.GuestReservation
 import com.example.cortex_camping.util.DeviceUtils
 import com.example.cortex_camping.util.ImageUtils
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import com.example.cortex_camping.model.LotteryEntry
 import com.example.cortex_camping.model.LotteryStatus
 import com.example.cortex_camping.repository.LotteryRepository
 import com.example.cortex_camping.repository.MessageRepository
+import com.example.cortex_camping.repository.CampsiteImageRepository
 import com.example.cortex_camping.repository.CampsiteRepository
+import com.example.cortex_camping.repository.ReservationRepository
 import java.util.UUID
 import com.example.cortex_camping.repository.AdminModerationRepository
 import com.example.cortex_camping.repository.EntrantRepository
+import com.example.cortex_camping.repository.NotificationRepository
+import com.example.cortex_camping.model.ReservationNotifications
+import com.example.cortex_camping.model.CampsiteRating
 
 enum class Role(val label: String) { User("Camper"), Owner("Campsite owner"), Admin("Admin") }
 
@@ -41,6 +47,7 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     private val entrantRepository = EntrantRepository()
     private val campsiteRepository = CampsiteRepository()
+    private val imageRepository = CampsiteImageRepository()
     private val moderationRepository = AdminModerationRepository()
 
     override fun onCleared() {
@@ -48,6 +55,11 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
         super.onCleared()
     }
 
+    private val reservationRepository = ReservationRepository()
+    private val notificationRepository = NotificationRepository()
+
+    // TODO: return false until the entrant, owner and admin repositories have loaded,
+    //  otherwise the app picks its start screen before it knows who the user is
     val isLoaded: Boolean get() = true
 
     var role by mutableStateOf(Role.User)
@@ -80,8 +92,17 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     fun campsite(id: String): Campsite? = campsites.firstOrNull { it.campsiteId == id }
 
-    // TODO: add the nights already booked by other reservations at this campsite
-    fun takenDates(campsite: Campsite): Set<LocalDate> = campsite.availability.unavailableDates
+    // nights the owner don't allow plus nights already booked are taken
+    fun takenDates(campsite: Campsite): Set<LocalDate> =
+        campsite.availability.unavailableDates + reservationRepository.bookedDates(campsite.campsiteId)
+
+    // check-in dates a winner is allowed to book after winning
+    fun openCheckIns(lottery: Lottery, campsite: Campsite): List<LocalDate> =
+        lottery.availableCheckIns(
+            takenDates(campsite),
+            campsite.availability.availableFrom,
+            campsite.availability.availableUntil
+        )
 
     // Profile
 
@@ -114,28 +135,84 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     // Reservations (entrant)
 
-    // TODO: the entrant's active reservations that aren't cancelled
-    val upcomingReservations: List<Reservation> get() = emptyList()
+    private val myReservations: List<Reservation>
+        get() = reservationRepository.reservations.filter { it.userId == deviceId }
 
-    // TODO: the entrant's past reservations
-    val pastReservations: List<Reservation> get() = emptyList()
+    // the entrant's active reservations
+    val upcomingReservations: List<Reservation>
+        get() = myReservations.filter {
+            it.status != ReservationStatus.CANCELLED && !it.checkOut.isBefore(LocalDate.now())
+        }
 
-    // TODO: lotteries the entrant won but hasn't picked dates for yet
-    val bookingOffers: List<Lottery> get() = emptyList()
+    // the entrant's past reservations
+    val pastReservations: List<Reservation>
+        get() = myReservations.filter { it.checkOut.isBefore(LocalDate.now()) }
+
+    // lotteries the entrant won but hasn't picked dates for yet
+    val bookingOffers: List<Lottery>
+        get() = lotteryRepository.lotteries.filter { it.hasOpenOffer(deviceId) }
 
     fun offerCampsite(lottery: Lottery): Campsite? = lottery.entryFor(deviceId)?.campsiteId?.let(::campsite)
 
-    // TODO: create the Reservation for this lottery win and let the owner know
-    fun chooseDates(lottery: Lottery, checkIn: LocalDate, checkOut: LocalDate) {}
+    // books the win: the winner picks one of the lottery's campsites and their dates.
+    // The other campsites in the lottery are simply not taken.
+    // TODO: let the owner know
+    fun chooseDates(
+        lottery: Lottery,
+        campsiteId: String,
+        checkIn: LocalDate,
+        checkOut: LocalDate,
+        onResult: (String?) -> Unit = {}
+    ) {
+        val reservation = Reservation(
+            bookingId = UUID.randomUUID().toString(),
+            campsiteId = campsiteId,
+            userId = deviceId,
+            lotteryId = lottery.id,
+            checkIn = checkIn,
+            checkOut = checkOut
+        )
+        // check so the user gets an instant message; claimWin re-checks everything on the server
+        val site = campsite(campsiteId)
+        if (site != null && (0 until reservation.nights).any { checkIn.plusDays(it.toLong()) in takenDates(site) }) {
+            onResult("Some of those nights are already taken.")
+            return
+        }
+        lotteryRepository.claimWin(lottery.id, reservation) { error ->
+            if (error == null) {
+                notificationRepository.send(
+                    ReservationNotifications.confirmed(reservation, site?.name ?: "your campsite")
+                )
+            }
+            onResult(error)
+        }    }
 
-    // TODO: give the lottery win up
-    fun declineOffer(lottery: Lottery) {}
+    // give the lottery win up
+    fun declineOffer(lottery: Lottery, onResult: (String?) -> Unit = {}) {
+        lotteryRepository.declineWin(lottery.id, deviceId, onResult)
+    }
 
-    // TODO: EntrantRepository.cancelReservation, then let the owner know
-    fun cancelReservation(reservation: Reservation) {}
+    // marks the reservation cancelled and frees its nights, then sends the entrant
+    // TODO: let the owner know
+    fun cancelReservation(reservation: Reservation, onResult: (String?) -> Unit = {}) {
+        reservationRepository.cancel(reservation) { error ->
+            if (error == null) {
+                val name = campsite(reservation.campsiteId)?.name ?: "your campsite"
+                notificationRepository.send(ReservationNotifications.cancelled(reservation, name))
+            }
+            onResult(error)
+        }
+    }
 
-    // TODO: save the rating on the reservation and update the campsite's average
-    fun rate(reservation: Reservation, stars: Int) {}
+    // saves the rating on the reservation and updates the campsite's average (US 01.13.01)
+    fun rate(reservation: Reservation, stars: Int, onResult: (String?) -> Unit = {}) {
+        val problem = CampsiteRating.problem(reservation, stars, LocalDate.now())
+        if (problem != null) {
+            onResult(problem)
+            return
+        }
+        reservationRepository.rate(reservation, stars, onResult)
+    }
 
     // Lotteries (entrant)
 
@@ -225,36 +302,58 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     val ownerReservations: List<GuestReservation> get() = emptyList()
 
     /**
-     * Shrinks a newly picked photo into the campsite, then writes it. If the photo can't be
-     * processed, [onError] runs and nothing is saved: a device-local Uri is useless in Firestore.
+     * Uploads a newly picked photo to Firebase Storage, then writes the campsite with its URL. If
+     * the photo can't be read or uploaded, [onError] gets a message and nothing is saved: a
+     * device-local Uri is useless in Firestore. Photos that predate Firebase Storage are moved
+     * there the next time their campsite is saved.
      */
-    fun saveCampsite(campsite: Campsite, onSaved: () -> Unit = {}, onError: () -> Unit = {}) {
+    fun saveCampsite(campsite: Campsite, onSaved: () -> Unit = {}, onError: (String) -> Unit = {}) {
         val campsiteId = campsite.campsiteId.ifBlank { UUID.randomUUID().toString() }
         val ownerId = campsite.ownerId.ifBlank { deviceId }
         val base = campsite.copy(campsiteId = campsiteId, ownerId = ownerId)
         val image = base.imageUrl
+        val storedInDocument = ImageUtils.decodeDataUri(image)
 
-        if (image == null || !ImageUtils.isLocalUri(image)) {
+        if (image == null || (storedInDocument == null && !ImageUtils.isLocalUri(image))) {
             campsiteRepository.addCampsite(base)
             onSaved()
             return
         }
+
+        fun fail(message: String, error: Exception) {
+            Log.e("CortexViewModel", "$message (campsite $campsiteId)", error)
+            // an image that was already saved like this shouldn't block other edits
+            if (image == campsite(campsiteId)?.imageUrl) {
+                campsiteRepository.addCampsite(base)
+                onSaved()
+            } else {
+                onError(message)
+            }
+        }
+
         viewModelScope.launch {
-            runCatching { ImageUtils.encodeAsDataUri(getApplication(), image) }
-                .onSuccess { encoded ->
-                    campsiteRepository.addCampsite(base.copy(imageUrl = encoded))
-                    onSaved()
-                }
-                .onFailure { error ->
-                    Log.e("CortexViewModel", "Couldn't process image for campsite $campsiteId", error)
-                    // an older save may have stored a local Uri; don't let it block other edits
-                    if (image == campsite(campsiteId)?.imageUrl) {
-                        campsiteRepository.addCampsite(base)
-                        onSaved()
-                    } else {
-                        onError()
-                    }
-                }
+            val jpeg = try {
+                storedInDocument ?: ImageUtils.encodeAsJpeg(getApplication(), image)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                fail("Couldn't use that image. Nothing was saved, please pick a different one.", e)
+                return@launch
+            }
+            val uploaded = try {
+                imageRepository.upload(campsiteId, jpeg)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                fail("Couldn't upload the image. Nothing was saved, please try again.", e)
+                return@launch
+            }
+            val replaced = campsite(campsiteId)?.imageUrl
+            // whichever photo the campsite doesn't end up using is deleted
+            campsiteRepository.addCampsite(base.copy(imageUrl = uploaded)) { error ->
+                imageRepository.delete(if (error == null) replaced else uploaded)
+            }
+            onSaved()
         }
     }
 
@@ -276,8 +375,11 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     // Notifications
 
-    // TODO: notifications sent to this device as an entrant
-    val myNotifications: List<AppNotification> get() = emptyList()
+    // notifications sent to this device as an entrant, newest first
+    val myNotifications: List<AppNotification>
+        get() = notificationRepository.notifications
+            .filter { it.recipientId == deviceId && !it.forOwner }
+            .sortedByDescending { it.sentAt }
 
     // TODO: notifications sent to this device as an owner (forOwner = true)
     val ownerReceived: List<AppNotification> get() = emptyList()
@@ -288,8 +390,11 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     val unreadCount: Int get() = myNotifications.count { !it.read }
     val ownerUnreadCount: Int get() = ownerReceived.count { !it.read }
 
-    // TODO: mark these notifications as read
-    fun markRead(notifications: List<AppNotification>) {}
+
+    // marks these notifications as read, skipping ones that already are
+    fun markRead(notifications: List<AppNotification>) {
+        notificationRepository.markRead(notifications.filter { !it.read }.map { it.id })
+    }
 
     fun notificationsCsv(notifications: List<AppNotification>): String = buildString {
         appendLine("title,detail,link,sent,read")
@@ -301,7 +406,7 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     // Chat
 
-    // TODO: messagesz between this entrant and the campsite's owner, oldest first
+    // TODO: messages between this entrant and the campsite's owner, oldest first
     fun conversation(campsiteId: String, entrantId: String): List<Message> =
         messageRepository.conversation(campsiteId, entrantId)
 
@@ -327,14 +432,20 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     // Completion callbacks report the server result to the confirmation flow.
     fun deleteCampsite(campsite: Campsite, onResult: (String?) -> Unit) {
-        moderationRepository.deleteCampsite(campsite.campsiteId, onResult)
+        moderationRepository.deleteCampsite(campsite.campsiteId) { error ->
+            if (error == null) imageRepository.delete(campsite.imageUrl)
+            onResult(error)
+        }
     }
 
     val campsitesWithImages: List<Campsite> get() = campsites.filter { !it.imageUrl.isNullOrBlank() }
 
-    // Remove only the reviewed image field, without overwriting campsite edits.
+    // Remove only the reviewed image, without overwriting campsite edits.
     fun deleteImage(campsite: Campsite, onResult: (String?) -> Unit) {
-        moderationRepository.deleteImage(campsite.campsiteId, campsite.imageUrl, onResult)
+        moderationRepository.deleteImage(campsite.campsiteId, campsite.imageUrl) { error ->
+            if (error == null) imageRepository.delete(campsite.imageUrl)
+            onResult(error)
+        }
     }
 
     // TODO: include notifications once notification storage is implemented
