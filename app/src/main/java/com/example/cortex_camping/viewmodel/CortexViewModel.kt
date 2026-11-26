@@ -111,7 +111,7 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     // Profile
 
     // saves entrant data to the database, using deviceID as their id
-    fun register(name: String, email: String, phone: String) {
+    fun register(name: String, email: String, phone: String, image: String? = null, onImageError: (String) -> Unit = {}) {
         val newEntrant = Entrant(
             id = deviceId,
             name = name,
@@ -119,12 +119,66 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
             phoneNumber = phone,
         )
         entrantRepository.saveOrUpdateEntrant(deviceId, newEntrant)
+        if (image != null) saveProfile(newEntrant, newEntrant, image, onSaved = {}, onError = onImageError)
     }
+
     // updates user profile in firebase
-    fun updateProfile(name: String, email: String, phone: String) {
+    fun updateProfile(
+        name: String,
+        email: String,
+        phone: String,
+        image: String?,
+        onSaved: () -> Unit = {},
+        onError: (String) -> Unit = {},
+    ) {
         val current = entrant ?: return
         val updated = current.copy(name = name, email = email, phoneNumber = phone)
-        entrantRepository.saveOrUpdateEntrant(deviceId, updated)
+        saveProfile(current, updated, image, onSaved, onError)
+    }
+
+    /**
+     * Saves the profile along with its picture. A new photo is uploaded first, and if that fails
+     * nothing is saved and [onError] is called. The old picture is deleted once it's replaced
+     * or removed.
+     */
+    private fun saveProfile(current: Entrant, updated: Entrant, image: String?, onSaved: () -> Unit, onError: (String) -> Unit) {
+        val stored = current.profileImageUrl
+        when (val change = ProfileImageChange.between(stored, image)) {
+            ProfileImageChange.Keep -> {
+                entrantRepository.saveOrUpdateEntrant(deviceId, updated.copy(profileImageUrl = stored))
+                onSaved()
+            }
+            ProfileImageChange.Remove -> {
+                entrantRepository.saveOrUpdateEntrant(deviceId, updated.copy(profileImageUrl = null)) { error ->
+                    if (error == null) imageRepository.delete(stored)
+                }
+                onSaved()
+            }
+            is ProfileImageChange.Upload -> viewModelScope.launch {
+                val jpeg = try {
+                    ImageUtils.encodeAsJpeg(getApplication(), change.uri)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e("CortexViewModel", "Couldn't read profile picture", e)
+                    onError("Couldn't use that picture. Nothing was saved, please pick a different one.")
+                    return@launch
+                }
+                val uploaded = try {
+                    imageRepository.uploadProfileImage(deviceId, jpeg)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e("CortexViewModel", "Couldn't upload profile picture", e)
+                    onError("Couldn't upload your picture. Nothing was saved, please try again.")
+                    return@launch
+                }
+                entrantRepository.saveOrUpdateEntrant(deviceId, updated.copy(profileImageUrl = uploaded)) { error ->
+                    imageRepository.delete(if (error == null) stored else uploaded)
+                }
+                onSaved()
+            }
+        }
     }
 
     // saves the entrant's notification settings
@@ -134,7 +188,9 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     // deletes user profile from firebase
     fun deleteProfile() {
+        val image = entrant?.profileImageUrl
         entrantRepository.deleteEntrant(deviceId)
+        imageRepository.delete(image)
     }
 
     // Reservations (entrant)
