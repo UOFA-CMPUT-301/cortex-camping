@@ -18,7 +18,7 @@ import com.example.cortex_camping.model.ReservationStatus
 import com.google.firebase.Firebase
 import com.google.firebase.firestore.firestore
 import java.time.LocalDate
-
+import com.example.cortex_camping.model.CampsiteRating
 class ReservationRepository {
     private val db = Firebase.firestore
     private val reservationsRef = db.collection("reservations")
@@ -66,26 +66,74 @@ class ReservationRepository {
     }
 
     /**
-     * Cancels a reservation and frees all nights associated with it.
+     * Cancels a reservation and frees all nights associated with it
      * Updates the reservation status to CANCELLED and deletes its booked
      * nights from Firestore.
      *
      * @param reservation the reservation to cancel
      * @param onResult called with null if successful, or an error message if the operation fails
      */
-    fun cancel(reservation: Reservation, onResult: (String?) -> Unit = {}) {
-        val batch = db.batch()
-        batch.update(
-            reservationsRef.document(reservation.bookingId),
-            "status", ReservationStatus.CANCELLED.name
-        )
-        for (i in 0 until reservation.nights) {
-            val night = reservation.checkIn.plusDays(i.toLong())
-            batch.delete(nightsRef.document(nightId(reservation.campsiteId, night)))
+    fun cancel(reservation: Reservation, userId: String, onResult: (String?) -> Unit = {}) {
+        val reservationDoc = reservationsRef.document(reservation.bookingId)
+
+        db.runTransaction { transaction ->
+            val data = transaction.get(reservationDoc).data
+                ?: throw IllegalStateException("Reservation not found.")
+            // use the saved copy, not the one on screen, which may be out of date
+            val saved = fromMap(data)
+                ?: throw IllegalStateException("Could not read reservation.")
+
+            check(saved.userId == userId) { "You can only cancel your own reservations." }
+            check(saved.status != ReservationStatus.CANCELLED) { "This reservation is already cancelled." }
+            check(!saved.checkOut.isBefore(LocalDate.now())) { "Past stays can't be cancelled." }
+
+            // only free nights that belong to this booking: someone else may have
+            // booked them since an earlier cancel
+            val mine = (0 until saved.nights)
+                .map { i -> nightsRef.document(nightId(saved.campsiteId, saved.checkIn.plusDays(i.toLong()))) }
+                .filter { transaction.get(it).getString("bookingId") == saved.bookingId }
+
+            transaction.update(reservationDoc, "status", ReservationStatus.CANCELLED.name)
+            mine.forEach { transaction.delete(it) }
+            null
         }
-        batch.commit()
             .addOnSuccessListener { onResult(null) }
             .addOnFailureListener { onResult(it.message ?: "Could not cancel the reservation.") }
+    }
+
+    /**
+     * Saves the entrant's star rating on their reservation and updates the campsite's
+     * average rating
+     *
+     * @param reservation the stay being rated
+     * @param stars the rating, from 1 to 5
+     * @param onResult called with null if it was saved, or an error message
+     */
+    fun rate(reservation: Reservation, stars: Int, onResult: (String?) -> Unit = {}) {
+        val reservationDoc = reservationsRef.document(reservation.bookingId)
+        val campsiteDoc = db.collection("campsite").document(reservation.campsiteId)
+        db.runTransaction { transaction ->
+            val stay = transaction.get(reservationDoc)
+            val campsite = transaction.get(campsiteDoc)
+            check(stay.exists()) { "That reservation no longer exists." }
+            check(stay.get("status") == ReservationStatus.CONFIRMED.name) {
+                "Only confirmed stays can be rated."
+            }
+            check(campsite.exists()) { "That campsite no longer exists." }
+
+            val previous = (stay.get("rating") as? Number)?.toInt() ?: 0
+            val summary = CampsiteRating.update(
+                average = (campsite.get("rating") as? Number)?.toDouble() ?: 0.0,
+                count = (campsite.get("ratingCount") as? Number)?.toInt() ?: 0,
+                stars = stars,
+                previousStars = previous
+            )
+            transaction.update(reservationDoc, "rating", stars)
+            transaction.update(campsiteDoc, mapOf("rating" to summary.average, "ratingCount" to summary.count))
+            null
+        }
+            .addOnSuccessListener { onResult(null) }
+            .addOnFailureListener { onResult(it.message ?: "Could not save your rating.") }
     }
 
     companion object {
