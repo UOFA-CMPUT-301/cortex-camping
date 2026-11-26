@@ -194,11 +194,19 @@ fun CortexApp(
     val showUserBar = tabFor(route) != null || route in setOf(Routes.CAMPSITE, Routes.PROFILE, Routes.EDIT_PROFILE, Routes.NOTIFICATIONS)
     val showOwnerBar = route in setOf(Routes.OWNER_CAMPSITES, Routes.OWNER_RESERVATIONS, Routes.OWNER_LOTTERIES, Routes.OWNER_NOTIFICATIONS)
     var showRolePicker by remember { mutableStateOf(false) }
+    // true while an owner with no camper profile (e.g. they deleted it) is registering one from role select
+    var registeringCamper by rememberSaveable { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     fun toast(msg: String) { scope.launch { snackbar.showSnackbar(msg) } }
     fun enterAs(role: Role) {
+        if (role == Role.User && !vm.isRegistered && !vm.hasAdminProfile) {
+            // no camper profile to use yet, so make one first
+            registeringCamper = true
+            nav.navigate(Routes.REGISTER)
+            return
+        }
         vm.role = role
         when (role) {
             Role.Owner -> vm.ensureOwner()
@@ -288,14 +296,11 @@ fun CortexApp(
         ) {
             composable(Routes.WELCOME) {
                 WelcomeScreen(
+                    hasAccount = vm.canLogIn,
                     onRegisterClick = { nav.navigate(Routes.REGISTER) },
                     onLoginClick = {
-                        if (vm.canLogIn) {
-                            nav.navigate(Routes.LOGIN_ROLE) {
-                                popUpTo(Routes.WELCOME) { inclusive = true }
-                            }
-                        } else {
-                            nav.navigate(Routes.REGISTER)
+                        nav.navigate(Routes.LOGIN_ROLE) {
+                            popUpTo(Routes.WELCOME) { inclusive = true }
                         }
                     }
                 )
@@ -304,7 +309,15 @@ fun CortexApp(
                 RegisterScreen(
                     onRegister = { name, email, phone, image ->
                         vm.register(name, email, phone, image, onImageError = { toast(it) })
-                        nav.navigate(Routes.BROWSE) { popUpTo(Routes.REGISTER) { inclusive = true } }
+                        if (registeringCamper) {
+                            // they already picked Camper on role select, so go straight in
+                            registeringCamper = false
+                            vm.role = Role.User
+                            nav.enterRole(Role.User, registered = true)
+                        } else {
+                            // new accounts pick their role, just like logging in
+                            nav.navigate(Routes.LOGIN_ROLE) { popUpTo(Routes.WELCOME) { inclusive = true } }
+                        }
                     },
                 )
             }

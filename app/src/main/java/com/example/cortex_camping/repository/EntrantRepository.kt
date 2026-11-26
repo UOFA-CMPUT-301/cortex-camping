@@ -1,6 +1,9 @@
 package com.example.cortex_camping.repository
 
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.example.cortex_camping.model.Entrant
 import com.google.firebase.Firebase
 import com.google.firebase.firestore.firestore
@@ -16,6 +19,10 @@ class EntrantRepository {
 
     val entrants: List<Entrant>
         get() = _entrants
+
+    // true once Firestore has answered the first time, so the app knows who this device is
+    var loaded by mutableStateOf(false)
+        private set
 
     fun saveOrUpdateEntrant(deviceId: String, entrant: Entrant, onComplete: (Exception?) -> Unit = {}) {
         // now generates a Firestore document with id based on Android device ID
@@ -46,7 +53,9 @@ class EntrantRepository {
 
     init {
         entrantsRef.addSnapshotListener { snapshot, error ->
+            loaded = true
             if (error != null) {
+                android.util.Log.e("EntrantRepository", "Couldn't load entrants", error)
                 return@addSnapshotListener
             }
             _entrants.clear()
