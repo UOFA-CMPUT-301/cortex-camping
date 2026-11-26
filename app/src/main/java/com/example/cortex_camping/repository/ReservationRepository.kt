@@ -66,7 +66,7 @@ class ReservationRepository {
     }
 
     /**
-     * Cancels a reservation and frees all nights associated with it.
+     * Cancels a reservation and frees all nights associated with it
      * Updates the reservation status to CANCELLED and deletes its booked
      * nights from Firestore.
      *
