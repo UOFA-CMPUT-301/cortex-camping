@@ -238,6 +238,18 @@ fun OwnerReservationsScreen(
     OwnerTabScaffold("Reservations", onNotifications, unread) {
         item { CortexSegmentedToggle(listOf("Upcoming", "Past", "Cancelled"), tab, { tab = it }, Modifier.padding(bottom = 4.dp)) }
         item { ResultsHeading(heading, "${visible.size} booking${if (visible.size == 1) "" else "s"}") }
+        if (visible.isEmpty()) item {
+            Text(
+                when (tab) {
+                    0 -> "No upcoming reservations for your campsites yet."
+                    1 -> "No past reservations for your campsites yet."
+                    else -> "No cancelled reservations for your campsites."
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = CortexTheme.colors.textSecondary,
+                modifier = Modifier.padding(vertical = 24.dp),
+            )
+        }
         items(visible, key = { it.reservation.bookingId }) { item ->
             val r = item.reservation
             val site = campsite(r.campsiteId)

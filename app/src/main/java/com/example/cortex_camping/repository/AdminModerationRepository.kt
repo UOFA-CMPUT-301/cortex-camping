@@ -115,6 +115,35 @@ class AdminModerationRepository {
             .addOnFailureListener { onResult(it.message ?: "Image deletion failed. Please retry.") }
     }
 
+    /** Removes the reviewed rating atomically with its contribution to the campsite average. */
+    fun deleteReview(bookingId: String, expectedRating: Int, onResult: (String?) -> Unit) {
+        if (!validateRecord(bookingId, onResult)) return
+        val target = db.collection("reservations").document(bookingId)
+        db.runTransaction { transaction ->
+            val reservation = transaction.get(target)
+            check(reservation.exists()) { "This reservation no longer exists." }
+            val rating = (reservation.get("rating") as? Number)?.toInt() ?: 0
+            check(rating != 0 && rating == expectedRating) {
+                "The rating changed or was removed. Refresh and check it again."
+            }
+            val campsiteId = reservation.getString("campsiteId").orEmpty()
+            check(campsiteId.isNotBlank() && '/' !in campsiteId) { "Invalid campsite ID." }
+            val campsiteRef = db.collection("campsite").document(campsiteId)
+            val campsite = transaction.get(campsiteRef)
+            if (campsite.exists()) {
+                val count = (campsite.get("ratingCount") as? Number)?.toInt() ?: 0
+                val average = (campsite.get("rating") as? Number)?.toDouble() ?: 0.0
+                val remaining = (count - 1).coerceAtLeast(0)
+                val updatedAverage = if (remaining == 0) 0.0
+                    else ((average * count - rating) / remaining).coerceIn(0.0, 5.0)
+                transaction.update(campsiteRef, mapOf("rating" to updatedAverage, "ratingCount" to remaining))
+            }
+            transaction.update(target, "rating", 0)
+            null
+        }.addOnSuccessListener { onResult(null) }
+            .addOnFailureListener { onResult(it.message ?: "Could not remove the rating.") }
+    }
+
     /** Returns false and reports an error if the repository is closed or [id] is invalid. */
     private fun validateRecord(id: String, onResult: (String?) -> Unit): Boolean {
         if (closed) {

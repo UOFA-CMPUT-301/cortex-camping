@@ -98,8 +98,11 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     val isRegistered: Boolean get() = entrant != null
 
-    // TODO: look up the name in EntrantRepository
-    fun entrantName(id: String): String = "Camper"
+    fun entrantName(id: String): String = entrantRepository.entrants
+        .firstOrNull { it.id == id }
+        ?.name
+        ?.takeIf { it.isNotBlank() }
+        ?: "Camper"
 
     // Moderation profiles provide owner names on the admin browse screens.
     fun ownerName(id: String): String = managedUsers.firstOrNull { it.isOwner && it.id == id }?.name ?: "Campsite owner"
@@ -375,8 +378,14 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     fun hasOngoingLottery(campsite: Campsite): Boolean =
         lotteriesFor(campsite.campsiteId).any { it.status == LotteryStatus.ONGOING }
 
-    // TODO: every entrant's reservations at the owner's campsites, with the guest's name
-    val ownerReservations: List<GuestReservation> get() = emptyList()
+    // Include every guest's reservation at any campsite owned by this device.
+    val ownerReservations: List<GuestReservation>
+        get() {
+            val campsiteIds = myCampsites.map { it.campsiteId }.toSet()
+            return reservationRepository.reservations
+                .filter { it.campsiteId in campsiteIds }
+                .map { GuestReservation(it, entrantName(it.userId)) }
+        }
 
     /**
      * Uploads a newly picked photo to Firebase Storage, then writes the campsite with its URL. If
@@ -514,6 +523,18 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     // Admin
+
+    val ratedReservations: List<Reservation>
+        get() = reservationRepository.reservations.filter { it.rating != 0 }
+            .sortedByDescending { it.checkOut }
+
+    fun deleteReview(reservation: Reservation, onResult: (String?) -> Unit) {
+        if (!isAdmin) {
+            onResult("Switch to the admin role to remove ratings.")
+            return
+        }
+        moderationRepository.deleteReview(reservation.bookingId, reservation.rating, onResult)
+    }
 
     // Profiles displayed by the admin user browser.
     val managedUsers: List<ManagedUser> get() = moderationRepository.users

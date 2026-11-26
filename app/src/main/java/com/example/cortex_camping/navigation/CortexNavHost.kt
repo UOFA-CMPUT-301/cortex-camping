@@ -111,6 +111,7 @@ object Routes {
     const val ADMIN_CAMPSITES = "admin/campsites"
     const val ADMIN_USERS = "admin/users"
     const val ADMIN_IMAGES = "admin/images"
+    const val ADMIN_REVIEWS = "admin/reviews"
     const val ADMIN_LOGS = "admin/logs"
 
     fun reservations(chooseLotteryId: String? = null) = "reservations" + (chooseLotteryId?.let { "?choose=$it" } ?: "")
@@ -625,6 +626,7 @@ fun CortexApp(
                     onUsers = { nav.navigate(Routes.ADMIN_USERS) },
                     onImages = { nav.navigate(Routes.ADMIN_IMAGES) },
                     onLogs = { nav.navigate(Routes.ADMIN_LOGS) },
+                    onReviews = { nav.navigate(Routes.ADMIN_REVIEWS) },
                     onSpoofUser = { enterAs(Role.User); toast("Using your admin profile as a camper") },
                     onSpoofOwner = { enterAs(Role.Owner); toast("Using your admin profile as a campsite owner") },
                 )
@@ -643,6 +645,17 @@ fun CortexApp(
             }
             composable(Routes.ADMIN_IMAGES) {
                 AdminImagesScreen(vm.campsitesWithImages, vm::ownerName, onBack = { nav.popBackStack() }, onDelete = { campsite -> vm.deleteImage(campsite) { error -> toast(error ?: "Image deleted") } })
+            }
+            composable(Routes.ADMIN_REVIEWS) {
+                com.example.cortex_camping.ui.screens.admin.AdminReviewsScreen(
+                    reservations = vm.ratedReservations,
+                    campsite = vm::campsite,
+                    entrantName = vm::entrantName,
+                    onBack = { nav.popBackStack() },
+                    onDelete = { reservation ->
+                        vm.deleteReview(reservation) { error -> toast(error ?: "Rating removed") }
+                    },
+                )
             }
             composable(Routes.ADMIN_LOGS) { AdminLogsScreen(vm.communicationLogs, onBack = { nav.popBackStack() }) }
         }
