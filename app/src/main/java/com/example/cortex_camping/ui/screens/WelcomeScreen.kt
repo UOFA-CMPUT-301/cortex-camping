@@ -100,6 +100,17 @@ fun WelcomeScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                if (hasAccount) {
+                    // explains why there's no Register button
+                    Text(
+                        text = "Account found on this device",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textSecondary,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+
                 CortexButton(
                     text = if (hasAccount) "Log-in" else "Register",
                     onClick = if (hasAccount) onLoginClick else onRegisterClick,
