@@ -42,6 +42,13 @@ class RoleAccessTest {
     }
 
     @Test
+    fun ownerOnlyCanLogInAndChooseOwnerOrCamper() {
+        assertTrue(RoleAccess.canLogIn(isRegistered = false, isAdmin = false, isOwner = true))
+        val roles = RoleAccess.availableRoles(isRegistered = false, isAdmin = false, isOwner = true)
+        assertEquals(listOf(Role.Owner, Role.User), roles)
+    }
+
+    @Test
     fun adminCanLogInWithoutRegistering() {
         assertTrue(RoleAccess.canLogIn(isRegistered = false, isAdmin = true))
     }

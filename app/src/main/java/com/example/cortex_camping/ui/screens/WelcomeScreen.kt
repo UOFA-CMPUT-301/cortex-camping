@@ -30,10 +30,11 @@ import com.example.cortex_camping.ui.theme.CortexTheme
 
 /**
  * Welcome screen presented to non-authenticated users.
- * Provides entry points to Register or Log-in.
+ * Shows Log-in if this device already has an account, otherwise Register, never both.
  */
 @Composable
 fun WelcomeScreen(
+    hasAccount: Boolean = false,
     onRegisterClick: () -> Unit = {},
     onLoginClick: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -94,22 +95,15 @@ fun WelcomeScreen(
                 )
             }
 
-            // Action Buttons: Register and Log-in
+            // Action Button: Register or Log-in
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 CortexButton(
-                    text = "Register",
-                    onClick = onRegisterClick,
+                    text = if (hasAccount) "Log-in" else "Register",
+                    onClick = if (hasAccount) onLoginClick else onRegisterClick,
                     style = CortexButtonStyle.Filled,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-
-                CortexButton(
-                    text = "Log-in",
-                    onClick = onLoginClick,
-                    style = CortexButtonStyle.OutlinedBrand,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }

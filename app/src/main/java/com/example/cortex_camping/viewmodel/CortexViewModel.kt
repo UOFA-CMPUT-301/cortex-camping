@@ -67,9 +67,9 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     private val reservationRepository = ReservationRepository()
     private val notificationRepository = NotificationRepository()
 
-    // TODO: return false until the entrant, owner and admin repositories have loaded,
-    //  otherwise the app picks its start screen before it knows who the user is
-    val isLoaded: Boolean get() = true
+    // false until the entrant, owner and admin repositories have loaded,
+    // otherwise the app picks its start screen before it knows who the user is
+    val isLoaded: Boolean get() = entrantRepository.loaded && ownerRepository.loaded && adminRepository.loaded
 
     var role by mutableStateOf(Role.User)
 
@@ -91,9 +91,9 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     val isAdmin: Boolean get() = role == Role.Admin
 
-    val availableRoles: List<Role> get() = RoleAccess.availableRoles(isRegistered, hasAdminProfile)
+    val availableRoles: List<Role> get() = RoleAccess.availableRoles(isRegistered, hasAdminProfile, owner != null)
 
-    val canLogIn: Boolean get() = RoleAccess.canLogIn(isRegistered, hasAdminProfile)
+    val canLogIn: Boolean get() = RoleAccess.canLogIn(isRegistered, hasAdminProfile, owner != null)
     val adminError: String? get() = moderationRepository.error
 
     val isRegistered: Boolean get() = entrant != null

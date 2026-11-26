@@ -7,16 +7,21 @@ import com.example.cortex_camping.model.Entrant
 /** Lets an admin also be a camper and/or campsite owner with their admin profile (US 03.11.01). */
 object RoleAccess {
 
-    fun availableRoles(isRegistered: Boolean, isAdmin: Boolean): List<Role> = buildList {
-        if (isRegistered || isAdmin) {
+    /**
+     * Any account can be an owner or a camper. A device with only an owner profile (e.g. its camper
+     * profile was deleted) still gets Camper, and picking it sends them to register a new camper profile.
+     */
+    fun availableRoles(isRegistered: Boolean, isAdmin: Boolean, isOwner: Boolean = false): List<Role> = buildList {
+        if (isRegistered || isAdmin || isOwner) {
             add(Role.Owner)
             add(Role.User)
         }
         if (isAdmin) add(Role.Admin)
     }
 
-    /** Whether Log In can skip registration. */
-    fun canLogIn(isRegistered: Boolean, isAdmin: Boolean): Boolean = isRegistered || isAdmin
+    /** Whether this device has any account (camper, owner or admin), so it logs in instead of registering. */
+    fun canLogIn(isRegistered: Boolean, isAdmin: Boolean, isOwner: Boolean = false): Boolean =
+        isRegistered || isAdmin || isOwner
 
     /** A camper profile for an admin, or null if the device already has one. */
     fun entrantFor(deviceId: String, existing: Entrant?, admin: Admin?): Entrant? {
