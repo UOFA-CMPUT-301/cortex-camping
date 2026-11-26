@@ -32,10 +32,11 @@ data class Reservation(
 
     // current reservations or those that are coming, these are what we can cancel
     fun isActive(today: LocalDate = LocalDate.now()): Boolean =
-        status != ReservationStatus.CANCELLED && !checkOut.isBefore(today)
+        status == ReservationStatus.CONFIRMED && !checkOut.isBefore(today)
 
     // finished or cancelled reservations, displayed in the history list
-    fun isPast(today: LocalDate = LocalDate.now()): Boolean = !isActive(today)
+    fun isPast(today: LocalDate = LocalDate.now()): Boolean =
+        status == ReservationStatus.CANCELLED || checkOut.isBefore(today)
 }
 
     // list of active reservations, most recent first

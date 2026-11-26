@@ -116,6 +116,9 @@ class ReservationRepository {
             val stay = transaction.get(reservationDoc)
             val campsite = transaction.get(campsiteDoc)
             check(stay.exists()) { "That reservation no longer exists." }
+            check(stay.get("status") == ReservationStatus.CONFIRMED.name) {
+                "Only confirmed stays can be rated."
+            }
             check(campsite.exists()) { "That campsite no longer exists." }
 
             val previous = (stay.get("rating") as? Number)?.toInt() ?: 0
