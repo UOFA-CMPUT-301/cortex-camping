@@ -36,3 +36,6 @@ google-services.json
 # fuck MacOs
 .DS_Store
 *.save
+
+# Cloud Functions dependencies
+functions/node_modules/
