@@ -3,12 +3,16 @@ package com.example.cortex_camping.navigation
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -25,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -42,6 +47,7 @@ import com.example.cortex_camping.model.AppNotification
 import com.example.cortex_camping.model.NotificationTarget
 import com.example.cortex_camping.ui.components.CortexBottomBar
 import com.example.cortex_camping.ui.components.CortexButton
+import com.example.cortex_camping.ui.components.CortexButtonSize
 import com.example.cortex_camping.ui.components.CortexButtonStyle
 import com.example.cortex_camping.ui.components.InfoDialog
 import com.example.cortex_camping.ui.components.LocalRoleSwitcher
@@ -192,6 +198,15 @@ fun CortexApp(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     fun toast(msg: String) { scope.launch { snackbar.showSnackbar(msg) } }
+    fun enterAs(role: Role) {
+        vm.role = role
+        when (role) {
+            Role.Owner -> vm.ensureOwner()
+            Role.User -> vm.ensureEntrant()
+            Role.Admin -> Unit
+        }
+        nav.enterRole(role, vm.isRegistered || vm.hasAdminProfile)
+    }
     fun openMap(site: Campsite) {
         if (!context.openExternal("geo:0,0?q=" + Uri.encode(site.location.ifBlank { site.name }))) toast("No map app found")
     }
@@ -240,13 +255,8 @@ fun CortexApp(
     LaunchedEffect(tappedNotification) {
         val n = tappedNotification ?: return@LaunchedEffect
         val role = if (n.forOwner) Role.Owner else Role.User
-        if (vm.role != role) {
-            vm.role = role
-            if (role == Role.Owner) vm.ensureOwner()
-            nav.enterRole(role, vm.isRegistered)
-        }
-        // an unregistered camper has to register first
-        if (role == Role.Owner || vm.isRegistered) {
+        if (vm.role != role) enterAs(role)
+        if (role == Role.Owner || vm.isRegistered || vm.hasAdminProfile) {
             nav.navigate(if (n.forOwner) Routes.OWNER_NOTIFICATIONS else Routes.NOTIFICATIONS)
             openNotification(n)
         }
@@ -258,13 +268,19 @@ fun CortexApp(
         contentWindowInsets = WindowInsets(0),
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            when {
-                showUserBar && vm.role != Role.Admin -> CortexBottomBar(selected = tabFor(route), onSelect = { nav.switchTab(it) })
-                showOwnerBar -> OwnerBottomBar(selected = ownerTabFor(route), onSelect = { nav.switchOwnerTab(it) })
+            val userBar = showUserBar && vm.role != Role.Admin
+            Column {
+                if (vm.hasAdminProfile && vm.role != Role.Admin && (userBar || showOwnerBar)) {
+                    AdminModeBar(role = vm.role, onBackToAdmin = { enterAs(Role.Admin) })
+                }
+                when {
+                    userBar -> CortexBottomBar(selected = tabFor(route), onSelect = { nav.switchTab(it) })
+                    showOwnerBar -> OwnerBottomBar(selected = ownerTabFor(route), onSelect = { nav.switchOwnerTab(it) })
+                }
             }
         },
     ) { inner ->
-      CompositionLocalProvider(LocalRoleSwitcher provides if (BuildConfig.DEBUG) ({ showRolePicker = true }) else null) {
+      CompositionLocalProvider(LocalRoleSwitcher provides if (BuildConfig.DEBUG || vm.hasAdminProfile) ({ showRolePicker = true }) else null) {
         NavHost(
             navController = nav,
             startDestination = startDestination,
@@ -274,7 +290,7 @@ fun CortexApp(
                 WelcomeScreen(
                     onRegisterClick = { nav.navigate(Routes.REGISTER) },
                     onLoginClick = {
-                        if (vm.isRegistered) {
+                        if (vm.canLogIn) {
                             nav.navigate(Routes.LOGIN_ROLE) {
                                 popUpTo(Routes.WELCOME) { inclusive = true }
                             }
@@ -294,21 +310,8 @@ fun CortexApp(
             }
             composable(Routes.LOGIN_ROLE) {
                 LoginRoleScreen(
-                    onSelectRole = { selectedRole ->
-                        vm.role = selectedRole
-                        if (selectedRole == Role.Owner) {
-                            vm.ensureOwner()
-                            nav.navigate(Routes.OWNER_CAMPSITES) {
-                                popUpTo(Routes.WELCOME) { inclusive = true }
-                            }
-                        } else {
-                            if (vm.isRegistered) {
-                                nav.navigate(Routes.BROWSE) {
-                                    popUpTo(Routes.WELCOME) { inclusive = true }
-                                }
-                            }
-                        }
-                    },
+                    roles = vm.availableRoles,
+                    onSelectRole = { selectedRole -> enterAs(selectedRole) },
                     onBack = { nav.popBackStack() },
                 )
             }
@@ -609,8 +612,8 @@ fun CortexApp(
                     onUsers = { nav.navigate(Routes.ADMIN_USERS) },
                     onImages = { nav.navigate(Routes.ADMIN_IMAGES) },
                     onLogs = { nav.navigate(Routes.ADMIN_LOGS) },
-                    onSpoofUser = { vm.role = Role.User; nav.navigate(homeFor(Role.User, vm.isRegistered)); toast("Viewing as camper") },
-                    onSpoofOwner = { vm.role = Role.Owner; vm.ensureOwner(); nav.navigate(Routes.OWNER_CAMPSITES); toast("Viewing as owner") },
+                    onSpoofUser = { enterAs(Role.User); toast("Using your admin profile as a camper") },
+                    onSpoofOwner = { enterAs(Role.Owner); toast("Using your admin profile as a campsite owner") },
                 )
             }
             composable(Routes.ADMIN_CAMPSITES) {
@@ -633,12 +636,15 @@ fun CortexApp(
       }
     }
     if (showRolePicker) {
-        RolePickerDialog(current = vm.role, onPick = { role ->
-            showRolePicker = false
-            vm.role = role
-            if (role == Role.Owner) vm.ensureOwner()
-            nav.enterRole(role, vm.isRegistered)
-        }, onDismiss = { showRolePicker = false })
+        RolePickerDialog(
+            current = vm.role,
+            roles = if (BuildConfig.DEBUG) Role.entries else vm.availableRoles,
+            onPick = { role ->
+                showRolePicker = false
+                enterAs(role)
+            },
+            onDismiss = { showRolePicker = false },
+        )
     }
 }
 
@@ -669,14 +675,31 @@ private fun CampsitePickerDialog(
 }
 
 @Composable
-private fun RolePickerDialog(current: Role, onPick: (Role) -> Unit, onDismiss: () -> Unit) {
+private fun RolePickerDialog(current: Role, roles: List<Role>, onPick: (Role) -> Unit, onDismiss: () -> Unit) {
     InfoDialog("Switch role", onDismiss) {
-        Role.entries.forEach { role ->
+        roles.forEach { role ->
             CortexButton(
                 role.label + if (role == current) " (current)" else "", { onPick(role) },
                 Modifier.fillMaxWidth(),
                 style = if (role == current) CortexButtonStyle.Filled else CortexButtonStyle.OutlinedBrand,
             )
         }
+    }
+}
+
+@Composable
+private fun AdminModeBar(role: Role, onBackToAdmin: () -> Unit) {
+    val colors = CortexTheme.colors
+    Row(
+        Modifier.fillMaxWidth().background(colors.surfaceDefault).padding(start = 16.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "Admin profile · ${role.label}",
+            style = MaterialTheme.typography.labelLarge,
+            color = colors.textSecondary,
+            modifier = Modifier.weight(1f),
+        )
+        CortexButton("Admin dashboard", onBackToAdmin, style = CortexButtonStyle.Text, size = CortexButtonSize.XSmall)
     }
 }

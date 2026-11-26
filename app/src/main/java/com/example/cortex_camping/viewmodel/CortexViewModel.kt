@@ -41,6 +41,9 @@ import com.example.cortex_camping.model.ReservationNotifications
 import com.example.cortex_camping.model.CampsiteRating
 import com.example.cortex_camping.model.past
 import com.example.cortex_camping.model.upcoming
+import com.example.cortex_camping.model.Admin
+import com.example.cortex_camping.model.AdminRepository
+import com.example.cortex_camping.repository.CampsiteOwnerRepository
 
 enum class Role(val label: String) { User("Camper"), Owner("Campsite owner"), Admin("Admin") }
 
@@ -50,6 +53,8 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
 
     private val entrantRepository = EntrantRepository()
+    private val ownerRepository = CampsiteOwnerRepository()
+    private val adminRepository = AdminRepository()
     private val campsiteRepository = CampsiteRepository()
     private val imageRepository = CampsiteImageRepository()
     private val moderationRepository = AdminModerationRepository()
@@ -76,10 +81,19 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     // looks up deviceId in the entrant database
     val entrant: Entrant? get() = entrantRepository.entrants.firstOrNull { it.id == deviceId }
 
-    // TODO: look up deviceId in CampsiteOwnerRepository
-    val owner: CampsiteOwner? get() = null
+    // looks up deviceId in the owner database
+    val owner: CampsiteOwner? get() = ownerRepository.owners.firstOrNull { it.id == deviceId }
+
+    // looks up deviceId in the admin database
+    val admin: Admin? get() = adminRepository.admins.firstOrNull { it.id == deviceId }
+
+    val hasAdminProfile: Boolean get() = admin != null
 
     val isAdmin: Boolean get() = role == Role.Admin
+
+    val availableRoles: List<Role> get() = RoleAccess.availableRoles(isRegistered, hasAdminProfile)
+
+    val canLogIn: Boolean get() = RoleAccess.canLogIn(isRegistered, hasAdminProfile)
     val adminError: String? get() = moderationRepository.error
 
     val isRegistered: Boolean get() = entrant != null
@@ -184,6 +198,10 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     // saves the entrant's notification settings
     fun updatePrefs(updated: Entrant) {
         entrantRepository.saveOrUpdateEntrant(deviceId, updated)
+    }
+
+    fun ensureEntrant() {
+        RoleAccess.entrantFor(deviceId, entrant, admin)?.let { entrantRepository.saveOrUpdateEntrant(deviceId, it) }
     }
 
     // deletes user profile from firebase
@@ -341,8 +359,9 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     // Owner
 
-    // TODO: create a CampsiteOwner for this device if there isn't one yet
-    fun ensureOwner() {}
+    fun ensureOwner() {
+        RoleAccess.ownerFor(deviceId, owner, entrant, admin)?.let { ownerRepository.saveOrUpdateOwner(deviceId, it) }
+    }
 
     val myCampsites: List<Campsite>
         get() = campsiteRepository.campsites.filter { it.ownerId == deviceId }
