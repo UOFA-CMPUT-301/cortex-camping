@@ -39,6 +39,10 @@ data class Reservation(
         status == ReservationStatus.CANCELLED || checkOut.isBefore(today)
 }
 
-    // list of active reservations, most recent first
+    // list of active reservations, soonest first
     fun List<Reservation>.upcoming(today: LocalDate = LocalDate.now()) =
         filter { it.isActive(today) }.sortedBy { it.checkIn }
+
+    // finished or cancelled reservations, most recent first
+    fun List<Reservation>.past(today: LocalDate = LocalDate.now()) =
+        filter { it.isPast(today) }.sortedByDescending { it.checkOut }
