@@ -50,9 +50,13 @@ class EntrantRepository {
             }
             _entrants.clear()
             snapshot?.documents?.forEach { document ->
-                val entrant = document.toObject(Entrant::class.java)
-                if (entrant != null) {
-                    _entrants.add(entrant)
+                try {
+                    val entrant = document.toObject(Entrant::class.java)
+                    if (entrant != null) {
+                        _entrants.add(entrant)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("EntrantRepository", "Error parsing entrant $document.id}", e)
                 }
             }
         }
