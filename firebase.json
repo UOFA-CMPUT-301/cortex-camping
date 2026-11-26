@@ -1,0 +1,13 @@
+{
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": ["node_modules", "test", ".git", "*.log"]
+    }
+  ],
+  "emulators": {
+    "firestore": { "port": 8080 },
+    "ui": { "enabled": false }
+  }
+}

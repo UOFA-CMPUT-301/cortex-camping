@@ -1,0 +1,60 @@
+<!-- ic_launcher_foreground.xml in one colour and without its background square, for Android's themed icons -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="200"
+    android:viewportHeight="200">
+  <group android:scaleX="0.77"
+      android:scaleY="0.77"
+      android:translateX="23"
+      android:translateY="23">
+    <path
+        android:pathData="M100,50C88,40 70,42 64,54C50,52 40,64 44,78C34,86 34,102 44,110C40,124 50,138 64,136C70,148 88,150 100,140"
+        android:strokeLineJoin="round"
+        android:strokeWidth="8"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"/>
+    <path
+        android:pathData="M100,50C112,40 130,42 136,54C150,52 160,64 156,78C166,86 166,102 156,110C160,124 150,138 136,136C130,148 112,150 100,140"
+        android:strokeLineJoin="round"
+        android:strokeWidth="8"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"/>
+    <path
+        android:pathData="M100,50L100,140"
+        android:strokeLineJoin="round"
+        android:strokeWidth="8"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"/>
+    <path
+        android:pathData="M72,64l-12,24l24,0z"
+        android:strokeLineJoin="round"
+        android:fillColor="#FFFFFFFF"
+        android:strokeLineCap="round"/>
+    <path
+        android:pathData="M72,78l-16,32l32,0z"
+        android:strokeLineJoin="round"
+        android:fillColor="#FFFFFFFF"
+        android:strokeLineCap="round"/>
+    <path
+        android:pathData="M71,108L73,108A2,2 0,0 1,75 110L75,122A2,2 0,0 1,73 124L71,124A2,2 0,0 1,69 122L69,110A2,2 0,0 1,71 108z"
+        android:strokeLineJoin="round"
+        android:fillColor="#FFFFFFFF"
+        android:strokeLineCap="round"/>
+    <path
+        android:pathData="M128,72m-7,0a7,7 0,1 1,14 0a7,7 0,1 1,-14 0"
+        android:strokeLineJoin="round"
+        android:fillColor="#FFFFFFFF"
+        android:strokeLineCap="round"/>
+    <path
+        android:pathData="M108,120L121,98L130,109L141,90L152,118"
+        android:strokeLineJoin="round"
+        android:strokeWidth="7"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"/>
+  </group>
+</vector>

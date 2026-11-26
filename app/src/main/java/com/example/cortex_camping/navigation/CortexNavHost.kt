@@ -167,7 +167,11 @@ private fun Context.openExternal(uri: String): Boolean =
     runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri))) }.isSuccess
 
 @Composable
-fun CortexApp(vm: CortexViewModel = viewModel()) {
+fun CortexApp(
+    vm: CortexViewModel = viewModel(),
+    tappedNotification: AppNotification? = null, // the push notification that opened the app
+    onTappedNotificationShown: () -> Unit = {},
+) {
     if (!vm.isLoaded) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         return
@@ -204,6 +208,48 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
             putExtra(Intent.EXTRA_TEXT, vm.notificationsCsv(list))
         }
         context.startActivity(Intent.createChooser(send, "Export notifications"))
+    }
+    // goes where a notification's link points, from a feed or from a push
+    fun openNotification(n: AppNotification, asOwner: Boolean = n.forOwner) {
+        vm.markRead(listOf(n))
+        if (asOwner) {
+            when (n.target) {
+                NotificationTarget.CHAT ->
+                    if (n.senderId.isNotBlank()) nav.navigate(Routes.ownerChat(n.campsiteId, n.senderId))
+                NotificationTarget.OWNER_RESERVATIONS -> nav.switchOwnerTab(OwnerTab.Reservations)
+                NotificationTarget.OWNER_LOTTERIES -> nav.switchOwnerTab(OwnerTab.Lotteries)
+                else -> nav.switchOwnerTab(OwnerTab.Campsites)
+            }
+            return
+        }
+        when (n.target) {
+            NotificationTarget.CHOOSE_DATES -> {
+                val offer = vm.bookingOffers.firstOrNull { it.entryFor(vm.deviceId)?.campsiteId == n.campsiteId }
+                nav.navigate(Routes.reservations(offer?.id))
+            }
+            NotificationTarget.CHAT -> nav.navigate(Routes.chat(n.campsiteId))
+            NotificationTarget.CAMPSITE_LOTTERY -> nav.navigate(Routes.campsite(n.campsiteId, lotteryTab = true))
+            NotificationTarget.MY_RESERVATIONS -> nav.switchTab(TopLevelTab.Reservations)
+            NotificationTarget.MY_LOTTERIES -> nav.switchTab(TopLevelTab.Lotteries)
+            NotificationTarget.BROWSE -> nav.switchTab(TopLevelTab.Browse)
+            else -> Unit
+        }
+    }
+    // a tapped push opens the feed it belongs to, then its link
+    LaunchedEffect(tappedNotification) {
+        val n = tappedNotification ?: return@LaunchedEffect
+        val role = if (n.forOwner) Role.Owner else Role.User
+        if (vm.role != role) {
+            vm.role = role
+            if (role == Role.Owner) vm.ensureOwner()
+            nav.enterRole(role, vm.isRegistered)
+        }
+        // an unregistered camper has to register first
+        if (role == Role.Owner || vm.isRegistered) {
+            nav.navigate(if (n.forOwner) Routes.OWNER_NOTIFICATIONS else Routes.NOTIFICATIONS)
+            openNotification(n)
+        }
+        onTappedNotificationShown()
     }
 
     Scaffold(
@@ -363,21 +409,7 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
                     onBack = { nav.popBackStack() },
                     onMarkAllRead = { vm.markRead(notifications) },
                     onDownloadCsv = { shareCsv(notifications) },
-                    onNotificationClick = { n ->
-                        vm.markRead(listOf(n))
-                        when (n.target) {
-                            NotificationTarget.CHOOSE_DATES -> {
-                                val offer = vm.bookingOffers.firstOrNull { it.entryFor(vm.deviceId)?.campsiteId == n.campsiteId }
-                                nav.navigate(Routes.reservations(offer?.id))
-                            }
-                            NotificationTarget.CHAT -> nav.navigate(Routes.chat(n.campsiteId))
-                            NotificationTarget.CAMPSITE_LOTTERY -> nav.navigate(Routes.campsite(n.campsiteId, lotteryTab = true))
-                            NotificationTarget.MY_RESERVATIONS -> nav.switchTab(TopLevelTab.Reservations)
-                            NotificationTarget.MY_LOTTERIES -> nav.switchTab(TopLevelTab.Lotteries)
-                            NotificationTarget.BROWSE -> nav.switchTab(TopLevelTab.Browse)
-                            else -> Unit
-                        }
-                    },
+                    onNotificationClick = { openNotification(it) },
                 )
             }
             // TODO: to be moved from campsite page to reservations page
@@ -502,16 +534,8 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
                     onBack = { nav.popBackStack() },
                     onMarkAllRead = { vm.markRead(received) },
                     onDownloadCsv = { shareCsv(vm.ownerSent) },
-                    onClick = { n ->
-                        vm.markRead(listOf(n))
-                        when (n.target) {
-                            NotificationTarget.CHAT ->
-                                if (n.senderId.isNotBlank()) nav.navigate(Routes.ownerChat(n.campsiteId, n.senderId))
-                            NotificationTarget.OWNER_RESERVATIONS -> nav.switchOwnerTab(OwnerTab.Reservations)
-                            NotificationTarget.OWNER_LOTTERIES -> nav.switchOwnerTab(OwnerTab.Lotteries)
-                            else -> nav.switchOwnerTab(OwnerTab.Campsites)
-                        }
-                    },
+                    // the sent tab lists entrants' notifications, which still open owner screens
+                    onClick = { openNotification(it, asOwner = true) },
                 )
             }
             composable(
