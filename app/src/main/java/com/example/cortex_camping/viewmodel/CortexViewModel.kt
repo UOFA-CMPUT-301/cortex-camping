@@ -36,8 +36,12 @@ import com.example.cortex_camping.repository.ReservationRepository
 import com.example.cortex_camping.repository.EntrantRepository
 import java.util.UUID
 import com.example.cortex_camping.repository.AdminModerationRepository
+import com.example.cortex_camping.repository.EntrantRepository
 import com.example.cortex_camping.repository.NotificationRepository
 import com.example.cortex_camping.model.ReservationNotifications
+import com.example.cortex_camping.model.CampsiteRating
+import com.example.cortex_camping.model.past
+import com.example.cortex_camping.model.upcoming
 
 enum class Role(val label: String) { User("Camper"), Owner("Campsite owner"), Admin("Admin") }
 
@@ -45,6 +49,8 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     val deviceId: String = DeviceUtils.getDeviceId(application)
 
+
+    private val entrantRepository = EntrantRepository()
     private val campsiteRepository = CampsiteRepository()
     private val entrantRepository = EntrantRepository()
     private val imageRepository = CampsiteImageRepository()
@@ -69,8 +75,8 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     // Current user
 
-    // TODO: look up deviceId in EntrantRepository
-    val entrant: Entrant? get() = null
+    // looks up deviceId in the entrant database
+    val entrant: Entrant? get() = entrantRepository.entrants.firstOrNull { it.id == deviceId }
 
     // TODO: look up deviceId in CampsiteOwnerRepository
     val owner: CampsiteOwner? get() = null
@@ -110,17 +116,32 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     // Profile
 
-    // TODO: save a new Entrant with EntrantRepository.saveOrUpdateEntrant
-    fun register(name: String, email: String, phone: String) {}
+    // saves entrant data to the database, using deviceID as their id
+    fun register(name: String, email: String, phone: String) {
+        val newEntrant = Entrant(
+            id = deviceId,
+            name = name,
+            email = email,
+            phoneNumber = phone,
+        )
+        entrantRepository.saveOrUpdateEntrant(deviceId, newEntrant)
+    }
+    // updates user profile in firebase
+    fun updateProfile(name: String, email: String, phone: String) {
+        val current = entrant ?: return
+        val updated = current.copy(name = name, email = email, phoneNumber = phone)
+        entrantRepository.saveOrUpdateEntrant(deviceId, updated)
+    }
 
-    // TODO: save the changes to the current entrant
-    fun updateProfile(name: String, email: String, phone: String) {}
+    // saves the entrant's notification settings
+    fun updatePrefs(updated: Entrant) {
+        entrantRepository.saveOrUpdateEntrant(deviceId, updated)
+    }
 
-    // TODO: save the entrant's notification settings
-    fun updatePrefs(updated: Entrant) {}
-
-    // TODO: EntrantRepository.deleteEntrant
-    fun deleteProfile() {}
+    // deletes user profile from firebase
+    fun deleteProfile() {
+        entrantRepository.deleteEntrant(deviceId)
+    }
 
     // Reservations (entrant)
 
@@ -129,13 +150,11 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     // the entrant's active reservations
     val upcomingReservations: List<Reservation>
-        get() = myReservations.filter {
-            it.status != ReservationStatus.CANCELLED && !it.checkOut.isBefore(LocalDate.now())
-        }
+        get() = myReservations.upcoming()
 
     // the entrant's past reservations
     val pastReservations: List<Reservation>
-        get() = myReservations.filter { it.checkOut.isBefore(LocalDate.now()) }
+        get() = myReservations.past()
 
     // lotteries the entrant won but hasn't picked dates for yet
     val bookingOffers: List<Lottery>
@@ -184,7 +203,7 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     // marks the reservation cancelled and frees its nights, then sends the entrant
     // TODO: let the owner know
     fun cancelReservation(reservation: Reservation, onResult: (String?) -> Unit = {}) {
-        reservationRepository.cancel(reservation) { error ->
+        reservationRepository.cancel(reservation, deviceId) { error ->
             if (error == null) {
                 val name = campsite(reservation.campsiteId)?.name ?: "your campsite"
                 notificationRepository.send(ReservationNotifications.cancelled(reservation, name))
@@ -193,8 +212,15 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // TODO: save the rating on the reservation and update the campsite's average
-    fun rate(reservation: Reservation, stars: Int) {}
+    // saves the rating on the reservation and updates the campsite's average (US 01.13.01)
+    fun rate(reservation: Reservation, stars: Int, onResult: (String?) -> Unit = {}) {
+        val problem = CampsiteRating.problem(reservation, stars, LocalDate.now())
+        if (problem != null) {
+            onResult(problem)
+            return
+        }
+        reservationRepository.rate(reservation, stars, onResult)
+    }
 
     // Lotteries (entrant)
 
