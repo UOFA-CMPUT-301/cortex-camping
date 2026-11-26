@@ -290,7 +290,6 @@ fun CortexApp(
                         vm.register(name, email, phone)
                         nav.navigate(Routes.BROWSE) { popUpTo(Routes.REGISTER) { inclusive = true } }
                     },
-                    onPolicy = { /* TODO: open the policy & guidelines page */ },
                     onEditAvatar = { /* TODO: pick and upload a profile picture */ },
                 )
             }
@@ -424,7 +423,6 @@ fun CortexApp(
                         vm.deleteProfile()
                         nav.navigate(Routes.WELCOME) { popUpTo(0) { inclusive = true } } // user is taken back to the welcome page after choosing to delete profile
                     },
-                    onPolicy = { /* TODO: open the policy & guidelines page */ },
                     onHelp = { /* TODO: open the help docs */ },
                 )
             }
