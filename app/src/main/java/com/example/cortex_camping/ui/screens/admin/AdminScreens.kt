@@ -33,7 +33,7 @@ import com.example.cortex_camping.ui.components.AvatarSlot
 import com.example.cortex_camping.ui.components.BackAction
 import com.example.cortex_camping.ui.components.CortexButton
 import com.example.cortex_camping.ui.components.CortexConfirmDialog
-import com.example.cortex_camping.ui.components.CortexMediumTopBar
+import com.example.cortex_camping.ui.components.CortexCenteredTopBar
 import com.example.cortex_camping.ui.components.CortexSegmentedToggle
 import com.example.cortex_camping.ui.components.CortexTextField
 import com.example.cortex_camping.ui.components.InfoActionCard
@@ -77,7 +77,7 @@ private fun AdminScaffold(
     val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     Scaffold(
         modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
-        topBar = { CortexMediumTopBar(title, navigationIcon = { if (onBack != null) BackAction(onBack) }, scrollBehavior = scroll) },
+        topBar = { CortexCenteredTopBar(title, navigationIcon = { if (onBack != null) BackAction(onBack) }, scrollBehavior = scroll) },
         bottomBar = bottomBar,
         containerColor = CortexTheme.colors.surfaceBase,
         contentWindowInsets = WindowInsets(0),

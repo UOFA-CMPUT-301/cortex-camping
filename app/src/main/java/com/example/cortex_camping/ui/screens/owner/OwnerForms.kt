@@ -43,7 +43,7 @@ import com.example.cortex_camping.model.NO_WAITLIST_LIMIT
 import com.example.cortex_camping.ui.components.AvailabilityDialog
 import com.example.cortex_camping.ui.components.CortexButton
 import com.example.cortex_camping.ui.components.CortexButtonStyle
-import com.example.cortex_camping.ui.components.CortexMediumTopBar
+import com.example.cortex_camping.ui.components.CortexCenteredTopBar
 import com.example.cortex_camping.ui.components.CortexSegmentedToggle
 import com.example.cortex_camping.ui.components.CortexTextField
 import com.example.cortex_camping.ui.components.DateTimeField
@@ -54,7 +54,7 @@ import com.example.cortex_camping.ui.components.MultiSelectDialog
 import com.example.cortex_camping.ui.theme.CortexPalette
 import com.example.cortex_camping.ui.theme.CortexTheme
 import java.time.LocalDate
-import java.time.LocalDateTime
+
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -67,7 +67,7 @@ private fun FormScaffold(
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
     Scaffold(
-        topBar = { CortexMediumTopBar(title) },
+        topBar = { CortexCenteredTopBar(title) },
         bottomBar = { FormActionBar(primaryLabel, onPrimary, onCancel, primaryEnabled) },
         containerColor = CortexTheme.colors.surfaceBase,
         contentWindowInsets = WindowInsets(0),

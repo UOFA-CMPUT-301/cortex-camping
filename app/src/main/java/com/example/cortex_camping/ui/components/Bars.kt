@@ -21,7 +21,9 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MediumTopAppBar
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
@@ -38,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import com.example.cortex_camping.ui.theme.CortexTheme
 import com.example.cortex_camping.viewmodel.Role
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
@@ -50,7 +53,7 @@ import com.example.cortex_camping.ui.theme.CortexPalette
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun CortexMediumTopBar(
+fun CortexCenteredTopBar(
     title: String,
     navigationIcon: @Composable () -> Unit = {},
     actions: @Composable RowScope.() -> Unit = {},
@@ -58,17 +61,27 @@ fun CortexMediumTopBar(
 ) {
     val colors = CortexTheme.colors
     val switcher = LocalRoleSwitcher.current
-    MediumTopAppBar(
+    CenterAlignedTopAppBar(
         title = {
             Text(
-                title, style = CortexTheme.emphasized.headlineMedium, color = colors.textPrimary,
-                modifier = if (switcher != null) Modifier.combinedClickable(onClick = {}, onLongClick = switcher, indication = null,
-                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) else Modifier,
+                title,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = colors.textPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = if (switcher != null) Modifier.combinedClickable(
+                    onClick = {},
+                    onLongClick = switcher,
+                    indication = null,
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                ) else Modifier,
             )
         },
         navigationIcon = navigationIcon,
         actions = actions,
-        colors = TopAppBarDefaults.topAppBarColors(
+        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
             containerColor = colors.surfaceBase,
             scrolledContainerColor = colors.surfaceDefault,
         ),
@@ -90,7 +103,7 @@ fun RoleSwitchPill(
         shape = RoundedCornerShape(100.dp),
         color = CortexTheme.colors.surfaceLow,
         border = BorderStroke(1.dp, CortexTheme.colors.borderSubtle),
-        modifier = modifier.width(130.dp).height(33.dp),
+        modifier = modifier.width(96.dp).height(40.dp),
     ) {
         Row(
             modifier = Modifier.padding(2.dp),
@@ -98,7 +111,7 @@ fun RoleSwitchPill(
         ) {
             roles.forEach { role ->
                 val selected = currentRole == role
-                val label = if (role == Role.User) "Camper" else "Owner"
+                val label = if (role == Role.User) "Camper mode" else "Owner mode"
                 val icon = if (role == Role.User) Icons.Outlined.LocationOn else Icons.Outlined.AccountCircle
 
                 Surface(
@@ -109,24 +122,14 @@ fun RoleSwitchPill(
                         .weight(1f)
                         .fillMaxHeight(),
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
+                    Box(
+                        contentAlignment = Alignment.Center,
                     ) {
                         Icon(
                             imageVector = icon,
-                            contentDescription = null,
-                            modifier = Modifier.size(12.dp),
+                            contentDescription = label,
+                            modifier = Modifier.size(20.dp),
                             tint = if (selected) CortexPalette.BrandOnPrimary else CortexTheme.colors.textPrimary,
-                        )
-                        Spacer(Modifier.width(2.dp))
-                        Text(
-                            text = label,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
-                            color = if (selected) CortexPalette.BrandOnPrimary else CortexTheme.colors.textPrimary,
-                            maxLines = 1,
                         )
                     }
                 }
@@ -162,7 +165,7 @@ fun CortexHomeTopBar(
     unreadNotifications: Int = 0,
     scrollBehavior: TopAppBarScrollBehavior? = null,
 ) {
-    CortexMediumTopBar(
+    CortexCenteredTopBar(
         title = title,
         navigationIcon = {
             RoleSwitchPill(currentRole = currentRole, onSwitchRole = onRoleSwitch)
