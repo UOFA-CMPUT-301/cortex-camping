@@ -35,8 +35,16 @@ import com.example.cortex_camping.ui.components.CortexBackTopBar
 import com.example.cortex_camping.ui.theme.CortexPalette
 import com.example.cortex_camping.ui.theme.CortexTheme
 import com.example.cortex_camping.viewmodel.Role
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import com.example.cortex_camping.R
 
 // Regular users are able to select whether to interact with the app as a campsite owner or camper/entrant
+/*
 @Composable
 fun LoginRoleScreen(
     onSelectRole: (Role) -> Unit,
@@ -130,53 +138,110 @@ fun LoginRoleScreen(
         }
     }
 }
+ */
 
 @Composable
-private fun RoleSelectionSquareCard(
-    title: String,
-    subtitle: String,
-    icon: ImageVector,
-    onClick: () -> Unit,
+fun LoginRoleScreen(
+    onSelectRole: (Role) -> Unit,
+    roles: List<Role> = listOf(Role.Owner, Role.User),
+    onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val colors = CortexTheme.colors
-
-    Card(
-        modifier = modifier.clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = colors.surfaceDefault,
-        ),
-        border = BorderStroke(1.dp, colors.borderSubtle),
+    Box(
+        modifier = modifier.fillMaxSize(),
     ) {
-        Column(
+        // 1. Background Image
+        Image(
+            painter = painterResource(id = R.drawable.bg_role_selection),
+            contentDescription = "Role Selection Background",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+
+        // 2. Dark Scrim Overlay
+        Box(
             modifier = Modifier
-                .padding(16.dp)
-                .fillMaxSize(),
-            verticalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = CortexPalette.BrandPrimary,
-                modifier = Modifier.size(36.dp),
-            )
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = colors.textPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.4f))
+        )
+
+        // 3. Scaffold
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = Color.Transparent,
+            topBar = {
+                // Make sure your CortexBackTopBar supports transparent or light content colors if needed
+                CortexBackTopBar(
+                    title = "Log In",
+                    onBack = onBack,
                 )
+            },
+        ) { innerPadding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+            ) {
                 Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.textSecondary,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
+                    text = "Choose your role",
+                    style = CortexTheme.emphasized.headlineMedium,
+                    color = Color.White,
                 )
+
+                Text(
+                    text = "Select how you would like to interact with Cortex Camping today:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+
+                Spacer(modifier = Modifier.weight(0.7f))
+
+                // Role Cards Row
+                if (Role.Owner in roles || Role.User in roles) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        if (Role.Owner in roles) {
+                            RoleSelectionSquareCard(
+                                title = "Campsite Owner",
+                                subtitle = "List campsites, manage availability & host lotteries.",
+                                icon = Icons.Outlined.Storefront,
+                                onClick = { onSelectRole(Role.Owner) },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .aspectRatio(1f),
+                            )
+                        }
+
+                        if (Role.User in roles) {
+                            RoleSelectionSquareCard(
+                                title = "Camper",
+                                subtitle = "Browse campsites, enter lotteries & manage bookings.",
+                                icon = Icons.Outlined.Person,
+                                onClick = { onSelectRole(Role.User) },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .aspectRatio(1f),
+                            )
+                        }
+                    }
+                }
+
+                if (Role.Admin in roles) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    RoleSelectionRectangleCard(
+                        title = "Admin",
+                        subtitle = "Moderate campsites, users, images, and communications.",
+                        icon = Icons.Outlined.AdminPanelSettings,
+                        onClick = { onSelectRole(Role.Admin) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+
+                Spacer(modifier = Modifier.weight(1.3f))
             }
         }
     }
@@ -224,6 +289,54 @@ private fun RoleSelectionRectangleCard(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = colors.textSecondary,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RoleSelectionSquareCard(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = Color.White.copy(alpha = 0.92f), // Frosted glass effect over background photo
+        ),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(20.dp)
+                .fillMaxSize(),
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = CortexPalette.BrandPrimary,
+                modifier = Modifier.size(36.dp),
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Black, // Dark text for contrast against white card
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.DarkGray,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
