@@ -32,6 +32,7 @@ object CampsiteRating {
     fun problem(reservation: Reservation, stars: Int, today: LocalDate): String? {
         if (stars !in 1..5) return "Pick between 1 and 5 stars."
         if (reservation.status == ReservationStatus.CANCELLED) return "You can't rate a cancelled stay."
+        if (reservation.status == ReservationStatus.REJECTED) return "You can't rate a rejected stay."
         if (reservation.checkOut.isAfter(today)) return "You can rate this stay after you check out."
         return null
     }

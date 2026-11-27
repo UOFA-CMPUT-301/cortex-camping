@@ -121,7 +121,7 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     fun openCheckIns(lottery: Lottery, campsite: Campsite): List<LocalDate> =
         lottery.availableCheckIns(
             takenDates(campsite),
-            campsite.availability.availableFrom,
+            maxOf(campsite.availability.availableFrom, LocalDate.now()),
             campsite.availability.availableUntil
         )
 
@@ -304,21 +304,20 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     private val lotteryRepository = LotteryRepository()
     private val messageRepository = MessageRepository()
 
-    // TODO: lotteries that include this campsite
+    // lotteries a winner could book this campsite through, cancelled ones left out
     fun lotteriesFor(campsiteId: String): List<Lottery> =
         lotteryRepository.lotteries.filter {
-            campsiteId in it.campsiteIds
+            campsiteId in it.campsiteIds && it.status != LotteryStatus.CANCELLED
         }
 
-    // add a lotto entry
+    // enters the lottery through its featured campsite, whichever campsite page the camper is on
     fun enterLottery(
         lottery: Lottery,
-        campsiteId: String,
         onResult: (String?) -> Unit = {}
     ) {
         lotteryRepository.enterLottery(
             lottery.id,
-            LotteryEntry(deviceId, campsiteId),
+            LotteryEntry(deviceId, lottery.entryCampsiteId),
             onResult
         )
     }
@@ -338,12 +337,11 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     // joins a waitlist if there is room
     fun joinWaitlist(
         lottery: Lottery,
-        campsiteId: String,
         onResult: (String?) -> Unit = {}
     ) {
         lotteryRepository.joinWaitlist(
             lottery.id,
-            LotteryEntry(deviceId, campsiteId),
+            LotteryEntry(deviceId, lottery.entryCampsiteId),
             onResult
         )
     }
@@ -369,11 +367,105 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     val myCampsites: List<Campsite>
         get() = campsiteRepository.campsites.filter { it.ownerId == deviceId }
 
-    // lotteries where ownerId == deviceId
+    // lotteries this owner created or was invited to and accepted
     val ownerLotteries: List<Lottery>
-        get() = lotteryRepository.lotteries.filter {
-            it.ownerId == deviceId
+        get() = lotteryRepository.lotteries.filter { it.isOwner(deviceId) }
+
+    // lotteries other owners invited this owner to that they haven't answered yet
+    val lotteryInvites: List<Lottery>
+        get() = lotteryRepository.lotteries.filter { it.isInvited(deviceId) && it.status != LotteryStatus.CANCELLED }
+
+    private fun campsiteIdsOf(ownerId: String): Set<String> =
+        campsiteRepository.campsites.filter { it.ownerId == ownerId }.map { it.campsiteId }.toSet()
+
+    // name of an owner from their profile, falling back to their email
+    fun lotteryOwnerName(id: String): String = ownerRepository.owners.firstOrNull { it.id == id }
+        ?.let { it.name.ifBlank { it.email } }
+        ?.takeIf { it.isNotBlank() }
+        ?: "Campsite owner"
+
+    private fun notifyOwner(recipientId: String, title: String, body: String) {
+        notificationRepository.send(
+            AppNotification(
+                recipientId = recipientId,
+                senderId = deviceId,
+                kind = NotificationKind.LOTTERY_UPDATED,
+                title = title,
+                body = body,
+                link = "View lotteries →",
+                target = NotificationTarget.OWNER_LOTTERIES,
+                forOwner = true
+            )
+        )
+    }
+
+    // the creator pulls out before the draw: the lottery is cancelled and everyone in it is told
+    fun cancelLottery(lottery: Lottery, onResult: (String?) -> Unit = {}) {
+        lotteryRepository.cancelLottery(lottery.id, deviceId) { error ->
+            if (error == null) {
+                (lottery.entries + lottery.waitlist).map { it.userId }.filter { it.isNotBlank() }.distinct().forEach { userId ->
+                    notificationRepository.send(
+                        AppNotification(
+                            recipientId = userId,
+                            senderId = deviceId,
+                            kind = NotificationKind.CANCELLED,
+                            title = "${lottery.name} was cancelled",
+                            body = "The campsite owner cancelled this lottery, so there won't be a draw.",
+                            link = "View lotteries →",
+                            campsiteId = lottery.entryCampsiteId,
+                            target = NotificationTarget.MY_LOTTERIES
+                        )
+                    )
+                }
+                (lottery.allOwnerIds + lottery.invitedOwnerIds).filter { it != deviceId }.distinct().forEach {
+                    notifyOwner(it, "${lottery.name} was cancelled", "${lotteryOwnerName(deviceId)} cancelled this shared lottery before the draw.")
+                }
+            }
+            onResult(error)
         }
+    }
+
+    // invites the owner registered with [email] to list their campsites in the lottery
+    fun inviteOwner(lottery: Lottery, email: String, onResult: (String?) -> Unit = {}) {
+        val invitee = ownerRepository.owners.firstOrNull { it.email.trim().equals(email.trim(), ignoreCase = true) }
+        if (email.isBlank() || invitee == null) {
+            onResult("No campsite owner is registered with that email.")
+            return
+        }
+        lotteryRepository.inviteOwner(lottery.id, deviceId, invitee.id) { error ->
+            if (error == null) {
+                notifyOwner(
+                    invitee.id,
+                    "Lottery invite",
+                    "${lotteryOwnerName(deviceId)} invited you to list your campsites in ${lottery.name}."
+                )
+            }
+            onResult(error)
+        }
+    }
+
+    fun respondToInvite(lottery: Lottery, accept: Boolean, onResult: (String?) -> Unit = {}) {
+        lotteryRepository.respondToInvite(lottery.id, deviceId, accept) { error ->
+            if (error == null) {
+                notifyOwner(
+                    lottery.ownerId,
+                    if (accept) "Lottery invite accepted" else "Lottery invite declined",
+                    "${lotteryOwnerName(deviceId)} ${if (accept) "accepted" else "declined"} your invite to ${lottery.name}."
+                )
+            }
+            onResult(error)
+        }
+    }
+
+    // sets which of this owner's campsites are listed in the lottery
+    fun setMyLotteryCampsites(lottery: Lottery, chosen: Set<String>, onResult: (String?) -> Unit = {}) {
+        lotteryRepository.setOwnerCampsites(lottery.id, deviceId, campsiteIdsOf(deviceId), chosen, onResult)
+    }
+
+    // the creator removes an owner or cancels their invite, or an owner leaves
+    fun removeLotteryOwner(lottery: Lottery, ownerId: String, onResult: (String?) -> Unit = {}) {
+        lotteryRepository.removeOwner(lottery.id, deviceId, ownerId, campsiteIdsOf(ownerId), onResult)
+    }
 
     fun hasOngoingLottery(campsite: Campsite): Boolean =
         lotteriesFor(campsite.campsiteId).any { it.status == LotteryStatus.ONGOING }
@@ -443,12 +535,32 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // TODO: save the new status on the entrant's reservation and notify them
-    fun setReservationStatus(item: GuestReservation, status: ReservationStatus) {}
+    // rejects a guest's reservation and tells them why. A lottery win with stay dates left
+    // opens again so they can choose new dates
+    fun rejectReservation(item: GuestReservation, reason: String, onResult: (String?) -> Unit = {}) {
+        val reservation = item.reservation
+        reservationRepository.reject(reservation, deviceId, reason) { error, winReopened ->
+            if (error == null) {
+                notificationRepository.send(
+                    ReservationNotifications.rejected(
+                        reservation.copy(status = ReservationStatus.REJECTED, rejectionReason = reason.trim()),
+                        campsite(reservation.campsiteId)?.name ?: "your campsite",
+                        winReopened
+                    ).copy(senderId = deviceId)
+                )
+            }
+            onResult(error)
+        }
+    }
 
-    // create the lottery (blank id) or save the changes
+    // create the lottery (blank id) or save the changes. ownerId is whoever is saving, which
+    // the repository checks against the creator on an edit
     fun saveLottery(lottery: Lottery, onResult: (String?) -> Unit = {}) {
-        lotteryRepository.saveLottery(lottery.copy(ownerId = lottery.ownerId.ifBlank { deviceId }), onResult)
+        lotteryRepository.saveLottery(
+            lottery.copy(ownerId = deviceId),
+            campsiteIdsOf(deviceId),
+            onResult
+        )
     }
 
     // Send one in-app notification per waitlisted user.

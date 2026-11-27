@@ -78,6 +78,7 @@ import com.example.cortex_camping.ui.screens.owner.LotteryFormScreen
 import com.example.cortex_camping.ui.screens.owner.OwnerCampsiteDetailsScreen
 import com.example.cortex_camping.ui.screens.owner.OwnerCampsitesScreen
 import com.example.cortex_camping.ui.screens.owner.OwnerLotteriesScreen
+import com.example.cortex_camping.ui.screens.owner.SharedLotteryActions
 import com.example.cortex_camping.ui.screens.owner.OwnerNotificationsScreen
 import com.example.cortex_camping.ui.screens.owner.OwnerReservationsScreen
 import com.example.cortex_camping.ui.theme.CortexTheme
@@ -412,11 +413,12 @@ fun CortexApp(
                     campsite = site,
                     hostName = vm.ownerName(site.ownerId),
                     lotteries = vm.lotteriesFor(id),
+                    campsiteName = { vm.campsite(it)?.name },
                     userId = vm.deviceId,
                     actions = LotteryActions(
-                        enter = { vm.enterLottery(it, id); toast("Entered ${it.name}") },
+                        enter = { l -> vm.enterLottery(l) { error -> toast(error ?: "Entered ${l.name}") } },
                         leave = { vm.leaveLottery(it) },
-                        joinWaitlist = { vm.joinWaitlist(it, id); toast("Joined the waitlist") },
+                        joinWaitlist = { vm.joinWaitlist(it) { error -> toast(error ?: "Joined the waitlist") } },
                         leaveWaitlist = { vm.leaveWaitlist(it); toast("Left the waitlist") },
                     ),
                     onBack = { nav.popBackStack() },
@@ -544,27 +546,44 @@ fun CortexApp(
                     unread = vm.ownerUnreadCount,
                     onNotifications = { nav.navigate(Routes.OWNER_NOTIFICATIONS) },
                     onMessage = { nav.navigate(Routes.ownerChat(it.reservation.campsiteId, it.reservation.userId)) },
-                    onSetStatus = { item, status -> vm.setReservationStatus(item, status); toast("${item.guestName} notified") },
+                    onReject = { item, reason ->
+                        vm.rejectReservation(item, reason) { error -> toast(error ?: "Reservation rejected. ${item.guestName} was notified.") }
+                    },
                 )
             }
             composable(Routes.OWNER_LOTTERIES) {
                 OwnerLotteriesScreen(
                     lotteries = vm.ownerLotteries,
+                    invites = vm.lotteryInvites,
+                    userId = vm.deviceId,
+                    myCampsites = vm.myCampsites,
                     campsite = vm::campsite,
                     entrantName = vm::entrantName,
+                    ownerName = vm::lotteryOwnerName,
                     unread = vm.ownerUnreadCount,
                     onNotifications = { nav.navigate(Routes.OWNER_NOTIFICATIONS) },
                     onCreate = { nav.navigate(Routes.ownerLotteryForm()) },
                     onUpdate = { nav.navigate(Routes.ownerLotteryForm(it.id)) },
                     onNotifyWaitlist = { vm.notifyWaitlist(it); toast("Notified ${it.waitlist.size} waitlisted users") },
                     onRunDraw = { vm.runDraw(it) { error -> toast(error ?: "Drawing now. Results will show in a few seconds.") } },
+                    onCancel = { l -> vm.cancelLottery(l) { error -> toast(error ?: "${l.name} was cancelled") } },
+                    shared = SharedLotteryActions(
+                        invite = { l, email -> vm.inviteOwner(l, email) { error -> toast(error ?: "Invite sent") } },
+                        respond = { l, accept ->
+                            vm.respondToInvite(l, accept) { error -> toast(error ?: if (accept) "Invite accepted. Add your campsites next." else "Invite declined") }
+                        },
+                        setMyCampsites = { l, ids -> vm.setMyLotteryCampsites(l, ids) { error -> toast(error ?: "Campsites updated") } },
+                        removeOwner = { l, ownerId ->
+                            vm.removeLotteryOwner(l, ownerId) { error -> toast(error ?: if (ownerId == vm.deviceId) "You left the lottery" else "Owner removed") }
+                        },
+                    ),
                 )
             }
             composable(Routes.OWNER_LOTTERY_FORM, arguments = listOf(navArgument("id") { type = NavType.StringType; nullable = true; defaultValue = null })) { e ->
                 val id = e.arguments?.getString("id")
                 var saving by remember { mutableStateOf(false) }
                 LotteryFormScreen(
-                    existing = id?.let { lid -> vm.ownerLotteries.firstOrNull { it.id == lid } },
+                    existing = id?.let { lid -> vm.ownerLotteries.firstOrNull { it.id == lid && it.isCreator(vm.deviceId) } },
                     campsites = vm.myCampsites,
                     saving = saving,
                     onSave = { lottery ->

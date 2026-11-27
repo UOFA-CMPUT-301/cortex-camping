@@ -97,11 +97,25 @@ fun PastReservationCard(
     modifier: Modifier = Modifier,
 ) {
     CortexOutlinedCard(modifier) {
-        CampsiteSummaryHeader(campsite, campsite.location, nightsGuests(reservation.nights, reservation.guests))
+        CampsiteSummaryHeader(
+            campsite, campsite.location, nightsGuests(reservation.nights, reservation.guests),
+            status = reservation.status.label.takeIf { reservation.isWithdrawn },
+            statusColor = CortexTheme.colors.error,
+        )
         CortexDivider()
-        Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 4.dp)) {
+        Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = if (reservation.isWithdrawn) 12.dp else 4.dp)) {
             Text(formatStay(reservation.checkIn, reservation.checkOut), style = CortexTheme.emphasized.bodyMedium, color = CortexTheme.colors.textPrimary)
-            StarRatingRow(rating = reservation.rating, onRate = onRate, modifier = Modifier.padding(top = 2.dp))
+            when (reservation.status) {
+                ReservationStatus.REJECTED -> Text(
+                    "Rejected by the campsite owner" + reservation.rejectionReason.takeIf { it.isNotBlank() }?.let { ": $it" }.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall, color = CortexTheme.colors.textSecondary, modifier = Modifier.padding(top = 2.dp),
+                )
+                ReservationStatus.CANCELLED -> Text(
+                    "You cancelled this stay", style = MaterialTheme.typography.bodySmall,
+                    color = CortexTheme.colors.textSecondary, modifier = Modifier.padding(top = 2.dp),
+                )
+                else -> StarRatingRow(rating = reservation.rating, onRate = onRate, modifier = Modifier.padding(top = 2.dp))
+            }
         }
     }
 }
@@ -118,6 +132,7 @@ fun LotteryEntryCard(
     val outcome = lottery.outcomeFor(userId)
     val drawn = lottery.status == LotteryStatus.FINALIZED
     val detail = when (outcome) {
+        LotteryOutcome.CANCELLED -> "The campsite owner cancelled this lottery before the draw."
         LotteryOutcome.ENTERED -> "Lottery slot confirmed. Included in the draw."
         LotteryOutcome.WON -> "You won a spot! Your entry was selected."
         LotteryOutcome.LOST -> "Not selected in this draw. Try again next time."
@@ -126,7 +141,11 @@ fun LotteryEntryCard(
         CampsiteSummaryHeader(
             campsite, campsite.location, nights(lottery.nights),
             status = outcome.label,
-            statusColor = if (outcome == LotteryOutcome.LOST) colors.textPrimary else MaterialTheme.colorScheme.primary,
+            statusColor = when (outcome) {
+                LotteryOutcome.LOST -> colors.textPrimary
+                LotteryOutcome.CANCELLED -> colors.error
+                else -> MaterialTheme.colorScheme.primary
+            },
         )
         CortexDivider()
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -152,6 +171,7 @@ fun CampsiteLotteryCard(
     onLeaveWaitlist: () -> Unit,
     onDetails: () -> Unit,
     modifier: Modifier = Modifier,
+    note: String? = null, // shown on campsites that aren't the lottery's featured one
 ) {
     val colors = CortexTheme.colors
     val waitlistText = if (lottery.hasWaitlist) "Waitlist: ${lottery.waitlistSummary}" else "Waitlist off"
@@ -196,6 +216,7 @@ fun CampsiteLotteryCard(
     CortexOutlinedCard(modifier) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(lottery.name, style = MaterialTheme.typography.bodySmall.copy(letterSpacing = 0.sp), color = colors.textPrimary)
+            note?.let { Text(it, style = CortexTheme.emphasized.bodyMedium, color = colors.textPrimary) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 StatusPill(if (open) "Open" else if (opensLater) "Upcoming" else "Closed")
                 Text("Draw $drawDate", style = MaterialTheme.typography.bodySmall, color = colors.textSecondary)

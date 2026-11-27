@@ -64,6 +64,7 @@ fun CampsiteDetailsScreen(
     userId: String,
     actions: LotteryActions,
     onBack: () -> Unit,
+    campsiteName: (String) -> String? = { null },
     onOpenMap: () -> Unit,
     onOpenRules: () -> Unit,
     onMessageHost: () -> Unit,
@@ -94,7 +95,7 @@ fun CampsiteDetailsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 if (tab == 0) AboutTab(campsite, hostName, onOpenMap, onOpenRules, onMessageHost, onReviews)
-                else LotteryTab(campsite, lotteries, userId, actions, onLotteryDetails)
+                else LotteryTab(campsite, lotteries, userId, actions, onLotteryDetails, campsiteName)
             }
         }
     }
@@ -175,7 +176,14 @@ private fun AboutTab(
 }
 
 @Composable
-private fun LotteryTab(campsite: Campsite, lotteries: List<Lottery>, userId: String, actions: LotteryActions, onDetails: (Lottery) -> Unit) {
+private fun LotteryTab(
+    campsite: Campsite,
+    lotteries: List<Lottery>,
+    userId: String,
+    actions: LotteryActions,
+    onDetails: (Lottery) -> Unit,
+    campsiteName: (String) -> String?,
+) {
     val colors = CortexTheme.colors
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(campsite.name, style = MaterialTheme.typography.headlineSmall, color = colors.textPrimary)
@@ -185,9 +193,15 @@ private fun LotteryTab(campsite: Campsite, lotteries: List<Lottery>, userId: Str
         Text("There are no lotteries for this campsite right now.", style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary)
     }
     lotteries.forEach { l ->
+        // campers only enter through the featured campsite: elsewhere the card says so and its
+        // buttons enter that lottery directly
+        val note = if (l.entryCampsiteId == campsite.campsiteId) null else
+            "Enter through the ${l.name} lottery" + (campsiteName(l.entryCampsiteId)?.let { " at $it" } ?: "") +
+                ". Winners can book this campsite too."
         CampsiteLotteryCard(
             lottery = l,
             userId = userId,
+            note = note,
             onEnter = { actions.enter(l) },
             onLeave = { actions.leave(l) },
             onJoinWaitlist = { actions.joinWaitlist(l) },

@@ -15,7 +15,11 @@ package com.example.cortex_camping.repository
 import androidx.compose.runtime.mutableStateListOf
 import com.example.cortex_camping.model.Reservation
 import com.example.cortex_camping.model.ReservationStatus
+import com.example.cortex_camping.model.hasStayDatesLeft
 import com.google.firebase.Firebase
+import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.Transaction
 import com.google.firebase.firestore.firestore
 import java.time.LocalDate
 import com.example.cortex_camping.model.CampsiteRating
@@ -41,7 +45,7 @@ class ReservationRepository {
         val locked = _nights.filter { it.first == campsiteId }.map { it.second }
         // also count active reservations directly, in case one was saved without its night locks
         val reserved = _reservations
-            .filter { it.campsiteId == campsiteId && it.status != ReservationStatus.CANCELLED }
+            .filter { it.campsiteId == campsiteId && !it.isWithdrawn }
             .flatMap { r -> (0 until r.nights).map { r.checkIn.plusDays(it.toLong()) } }
         return (locked + reserved).toSet()
     }
@@ -85,13 +89,10 @@ class ReservationRepository {
 
             check(saved.userId == userId) { "You can only cancel your own reservations." }
             check(saved.status != ReservationStatus.CANCELLED) { "This reservation is already cancelled." }
+            check(saved.status != ReservationStatus.REJECTED) { "The campsite owner already rejected this reservation." }
             check(!saved.checkOut.isBefore(LocalDate.now())) { "Past stays can't be cancelled." }
 
-            // only free nights that belong to this booking: someone else may have
-            // booked them since an earlier cancel
-            val mine = (0 until saved.nights)
-                .map { i -> nightsRef.document(nightId(saved.campsiteId, saved.checkIn.plusDays(i.toLong()))) }
-                .filter { transaction.get(it).getString("bookingId") == saved.bookingId }
+            val mine = transaction.ownNightLocks(saved)
 
             transaction.update(reservationDoc, "status", ReservationStatus.CANCELLED.name)
             mine.forEach { transaction.delete(it) }
@@ -100,6 +101,68 @@ class ReservationRepository {
             .addOnSuccessListener { onResult(null) }
             .addOnFailureListener { onResult(it.message ?: "Could not cancel the reservation.") }
     }
+
+    /**
+     * The campsite owner rejects a reservation at one of their campsites. Its nights are freed,
+     * and if it was a lottery win whose stay window still has nights ahead, the win opens again
+     * so the camper can choose new dates.
+     *
+     * @param reservation the reservation to reject
+     * @param ownerId the owner rejecting it, who has to own the campsite
+     * @param reason why it was rejected, shown to the camper; can be blank
+     * @param onResult called with an error message or null, and whether the lottery win reopened
+     */
+    fun reject(
+        reservation: Reservation,
+        ownerId: String,
+        reason: String,
+        onResult: (error: String?, winReopened: Boolean) -> Unit = { _, _ -> }
+    ) {
+        val trimmed = reason.trim()
+        val reservationDoc = reservationsRef.document(reservation.bookingId)
+
+        db.runTransaction { transaction ->
+            val saved = transaction.get(reservationDoc).data?.let { fromMap(it) }
+                ?: throw IllegalStateException("Reservation not found.")
+            val campsiteOwner = transaction.get(db.collection("campsite").document(saved.campsiteId))
+                .getString("ownerId")
+
+            check(campsiteOwner == ownerId) { "You can only reject reservations at your own campsites." }
+            check(saved.status != ReservationStatus.CANCELLED) { "The camper already cancelled this reservation." }
+            check(saved.status != ReservationStatus.REJECTED) { "This reservation is already rejected." }
+            check(!saved.checkOut.isBefore(LocalDate.now())) { "Past stays can't be rejected." }
+
+            val mine = transaction.ownNightLocks(saved)
+
+            // all reads have to happen before the first write
+            val lotteryDoc = saved.lotteryId.takeIf { it.isNotBlank() }
+                ?.let { db.collection("lotteries").document(it) }
+            val lottery = lotteryDoc?.let { transaction.get(it) }
+            val claimed = (lottery?.get("claimedIds") as? List<*>)?.contains(saved.userId) == true
+            val stayUntil = lottery?.getString("stayUntil")
+                ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+            val reopen = claimed && stayUntil != null && hasStayDatesLeft(stayUntil)
+
+            transaction.update(
+                reservationDoc,
+                mapOf("status" to ReservationStatus.REJECTED.name, "rejectionReason" to trimmed)
+            )
+            mine.forEach { transaction.delete(it) }
+            if (reopen && lotteryDoc != null) {
+                transaction.update(lotteryDoc, "claimedIds", FieldValue.arrayRemove(saved.userId))
+            }
+            reopen
+        }
+            .addOnSuccessListener { onResult(null, it) }
+            .addOnFailureListener { onResult(it.message ?: "Could not reject the reservation.", false) }
+    }
+
+    // the night locks that still belong to this booking: someone else may have booked
+    // some of those nights since an earlier cancel
+    private fun Transaction.ownNightLocks(saved: Reservation): List<DocumentReference> =
+        (0 until saved.nights)
+            .map { i -> nightsRef.document(nightId(saved.campsiteId, saved.checkIn.plusDays(i.toLong()))) }
+            .filter { get(it).getString("bookingId") == saved.bookingId }
 
     /**
      * Saves the entrant's star rating on their reservation and updates the campsite's
@@ -162,7 +225,8 @@ class ReservationRepository {
             "checkOut" to reservation.checkOut.toString(),
             "guests" to reservation.guests,
             "status" to reservation.status.name,
-            "rating" to reservation.rating
+            "rating" to reservation.rating,
+            "rejectionReason" to reservation.rejectionReason
         )
 
         /**
@@ -184,7 +248,8 @@ class ReservationRepository {
                     status = (data["status"] as? String)
                         ?.let { ReservationStatus.valueOf(it) }
                         ?: ReservationStatus.CONFIRMED,
-                    rating = (data["rating"] as? Number)?.toInt() ?: 0
+                    rating = (data["rating"] as? Number)?.toInt() ?: 0,
+                    rejectionReason = data["rejectionReason"] as? String ?: ""
                 )
             } catch (e: Exception) {
                 null

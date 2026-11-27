@@ -3,8 +3,8 @@
  * ReservationNotifications.kt
  *
  * Builds the notifications an entrant gets about their own reservations:
- * a confirmation when they book a stay and a confirmation
- * when they cancel one .
+ * a confirmation when they book a stay, a confirmation when they cancel one,
+ * and a notice when the campsite owner rejects one.
  *
  */
 
@@ -56,7 +56,28 @@ object ReservationNotifications {
         )
 
     /**
-     * The reservation details used in both notifications
+     * Notification sent after the campsite owner rejects a reservation.
+     *
+     * @param reservation the reservation that was rejected, with the owner's reason if they gave one
+     * @param campsiteName name of the campsite, shown in the title
+     * @param winReopened true if the lottery win came back so the camper can pick new dates
+     * @return a notification for the entrant who owns the reservation
+     */
+    fun rejected(reservation: Reservation, campsiteName: String, winReopened: Boolean): AppNotification =
+        AppNotification(
+            recipientId = reservation.userId,
+            kind = NotificationKind.CANCELLED,
+            title = "Reservation rejected: $campsiteName",
+            body = details(reservation) +
+                    reservation.rejectionReason.takeIf { it.isNotBlank() }?.let { ". Reason: $it" }.orEmpty() +
+                    if (winReopened) ". Your lottery win is open again, so you can choose new dates." else "",
+            link = if (winReopened) "Choose new dates →" else "View reservations →",
+            campsiteId = reservation.campsiteId,
+            target = NotificationTarget.MY_RESERVATIONS,
+        )
+
+    /**
+     * The reservation details used in every notification
      *
      * @param reservation the reservation to describe
      * @return the dates, number of nights and guests, and booking ID
