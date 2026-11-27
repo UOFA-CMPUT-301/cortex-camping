@@ -74,7 +74,7 @@ private fun AdminScaffold(
     bottomBar: @Composable () -> Unit = {},
     content: LazyListScope.() -> Unit,
 ) {
-    val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val scroll = TopAppBarDefaults.pinnedScrollBehavior()
     Scaffold(
         modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
         topBar = { CortexCenteredTopBar(title, navigationIcon = { if (onBack != null) BackAction(onBack) }, scrollBehavior = scroll) },

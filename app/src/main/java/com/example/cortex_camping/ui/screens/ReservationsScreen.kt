@@ -58,7 +58,7 @@ fun ReservationsScreen(
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var pendingCancel by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingDecline by rememberSaveable { mutableStateOf<String?>(null) }
-    val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val scroll = TopAppBarDefaults.pinnedScrollBehavior()
     val count = if (tab == 0) upcoming.size + offers.size else past.size
 
     Scaffold(

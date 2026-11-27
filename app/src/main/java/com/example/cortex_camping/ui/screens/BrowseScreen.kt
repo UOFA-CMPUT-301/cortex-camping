@@ -70,7 +70,7 @@ fun BrowseScreen(
     var query by remember { mutableStateOf("") }
     var minGuests by remember { mutableIntStateOf(0) }
     var filterOpen by remember { mutableStateOf(false) }
-    val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val scroll = TopAppBarDefaults.pinnedScrollBehavior()
     var location by remember { mutableStateOf("") }
 
     var checkIn by remember { mutableStateOf<LocalDate?>(null) }

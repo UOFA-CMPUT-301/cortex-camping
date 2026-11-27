@@ -46,7 +46,7 @@ fun LotteriesScreen(
     contentPadding: PaddingValues = PaddingValues(),
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
-    val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val scroll = TopAppBarDefaults.pinnedScrollBehavior()
     val visible = if (tab == 0) lotteries else lotteries.filter { it.status == LotteryStatus.ONGOING }
 
     Scaffold(

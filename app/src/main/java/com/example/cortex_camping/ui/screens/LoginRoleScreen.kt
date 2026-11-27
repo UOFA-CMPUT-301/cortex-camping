@@ -6,12 +6,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AdminPanelSettings
@@ -27,6 +27,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.cortex_camping.ui.components.CortexBackTopBar
@@ -59,8 +61,8 @@ fun LoginRoleScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .padding(horizontal = 24.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            // Header at the TOP
             Text(
                 text = "Choose your role",
                 style = CortexTheme.emphasized.headlineMedium,
@@ -71,42 +73,66 @@ fun LoginRoleScreen(
                 text = "Select how you would like to interact with Cortex Camping today:",
                 style = MaterialTheme.typography.bodyMedium,
                 color = colors.textSecondary,
+                modifier = Modifier.padding(top = 4.dp),
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            // Smaller top weight pulls elements higher up
+            Spacer(modifier = Modifier.weight(0.7f))
 
-            if (Role.Owner in roles) {
-                RoleSelectionCard(
-                    title = "Campsite Owner",
-                    subtitle = "List your campsites, manage availability, and host lotteries for campers.",
-                    icon = Icons.Outlined.Storefront,
-                    onClick = { onSelectRole(Role.Owner) },
-                )
+            // Twin 1:1 square role cards side-by-side
+            if (Role.Owner in roles || Role.User in roles) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    // 1. Campsite Owner (Left Twin Square)
+                    if (Role.Owner in roles) {
+                        RoleSelectionSquareCard(
+                            title = "Campsite Owner",
+                            subtitle = "List campsites, manage availability & host lotteries.",
+                            icon = Icons.Outlined.Storefront,
+                            onClick = { onSelectRole(Role.Owner) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .aspectRatio(1f),
+                        )
+                    }
+
+                    // 2. Camper (Right Twin Square)
+                    if (Role.User in roles) {
+                        RoleSelectionSquareCard(
+                            title = "Camper",
+                            subtitle = "Browse campsites, enter lotteries & manage bookings.",
+                            icon = Icons.Outlined.Person,
+                            onClick = { onSelectRole(Role.User) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .aspectRatio(1f),
+                        )
+                    }
+                }
             }
 
-            if (Role.User in roles) {
-                RoleSelectionCard(
-                    title = "Camper",
-                    subtitle = "Browse campsites, enter lotteries, and manage your reservations.",
-                    icon = Icons.Outlined.Person,
-                    onClick = { onSelectRole(Role.User) },
-                )
-            }
-
+            // Admin card (Full-width rectangle)
             if (Role.Admin in roles) {
-                RoleSelectionCard(
+                Spacer(modifier = Modifier.height(16.dp))
+                RoleSelectionRectangleCard(
                     title = "Admin",
                     subtitle = "Moderate campsites, users, images, and communications.",
                     icon = Icons.Outlined.AdminPanelSettings,
                     onClick = { onSelectRole(Role.Admin) },
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
+
+            // Larger bottom weight keeps the cards positioned higher up
+            Spacer(modifier = Modifier.weight(1.3f))
         }
     }
 }
 
 @Composable
-private fun RoleSelectionCard(
+private fun RoleSelectionSquareCard(
     title: String,
     subtitle: String,
     icon: ImageVector,
@@ -116,18 +142,18 @@ private fun RoleSelectionCard(
     val colors = CortexTheme.colors
 
     Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
+        modifier = modifier.clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = colors.surfaceDefault,
         ),
         border = BorderStroke(1.dp, colors.borderSubtle),
     ) {
-        Row(
-            modifier = Modifier.padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxSize(),
+            verticalArrangement = Arrangement.SpaceBetween,
         ) {
             Icon(
                 imageVector = icon,
@@ -135,14 +161,65 @@ private fun RoleSelectionCard(
                 tint = CortexPalette.BrandPrimary,
                 modifier = Modifier.size(36.dp),
             )
-            Spacer(modifier = Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.textSecondary,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RoleSelectionRectangleCard(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = CortexTheme.colors
+
+    Card(
+        modifier = modifier.clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = colors.surfaceDefault,
+        ),
+        border = BorderStroke(1.dp, colors.borderSubtle),
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(20.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = CortexPalette.BrandPrimary,
+                modifier = Modifier.size(36.dp),
+            )
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
                     color = colors.textPrimary,
                 )
-                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,

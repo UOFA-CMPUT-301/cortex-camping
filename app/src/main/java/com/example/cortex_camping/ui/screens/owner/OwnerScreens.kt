@@ -88,7 +88,7 @@ private fun OwnerTabScaffold(
     unread: Int,
     content: LazyListContent,
 ) {
-    val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val scroll = TopAppBarDefaults.pinnedScrollBehavior()
     Scaffold(
         modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
         topBar = {
