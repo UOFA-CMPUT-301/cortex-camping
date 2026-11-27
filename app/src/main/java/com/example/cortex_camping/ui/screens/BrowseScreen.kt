@@ -51,6 +51,7 @@ import java.time.YearMonth
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import com.example.cortex_camping.viewmodel.Role
 
 
 /** Figma frame "Browse" */
@@ -58,6 +59,8 @@ import androidx.compose.material3.Icon
 @Composable
 fun BrowseScreen(
     campsites: List<Campsite>,
+    currentRole: Role,
+    onRoleSwitch: (Role) -> Unit,
     unreadNotifications: Int,
     onCampsiteClick: (Campsite) -> Unit,
     onProfileClick: () -> Unit,
@@ -91,10 +94,12 @@ fun BrowseScreen(
         topBar = {
             CortexHomeTopBar(
                 "Cortex Camping",
+                currentRole,
+                onRoleSwitch,
                 onProfileClick,
                 onNotificationsClick,
                 unreadNotifications,
-                scroll
+                scroll,
             )
         },
         containerColor = CortexTheme.colors.surfaceBase,

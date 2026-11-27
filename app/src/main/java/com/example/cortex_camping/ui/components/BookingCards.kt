@@ -209,7 +209,7 @@ fun CampsiteLotteryCard(
         ) { CortexButton("Join waitlist", onJoinWaitlist, size = CortexButtonSize.XSmall) }
 
         else -> Ui(
-            "Lottery full", "No entry slots remain. This lottery has no waitlist.", "Lottery details ›",
+            "Lottery full", "No entry slots remain. " + if (lottery.hasWaitlist) "Waitlist is full." else "This lottery has no waitlist.", "Lottery details ›",
         ) { CortexButton("Lottery full", {}, enabled = false) }
     }
 

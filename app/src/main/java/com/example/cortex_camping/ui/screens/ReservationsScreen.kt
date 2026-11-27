@@ -32,6 +32,7 @@ import com.example.cortex_camping.ui.components.PastReservationCard
 import com.example.cortex_camping.ui.components.ReservationCard
 import com.example.cortex_camping.ui.components.ResultsHeading
 import com.example.cortex_camping.ui.theme.CortexTheme
+import com.example.cortex_camping.viewmodel.Role
 
 /** Figma frames "My reservations" and "My Reservations - Past" */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -42,6 +43,8 @@ fun ReservationsScreen(
     offers: List<Lottery>,
     offerCampsite: (Lottery) -> Campsite?,
     campsite: (String) -> Campsite?,
+    currentRole: Role,
+    onRoleSwitch: (Role) -> Unit,
     unreadNotifications: Int,
     onProfileClick: () -> Unit,
     onNotificationsClick: () -> Unit,
@@ -60,7 +63,7 @@ fun ReservationsScreen(
 
     Scaffold(
         modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
-        topBar = { CortexHomeTopBar("My Reservations", onProfileClick, onNotificationsClick, unreadNotifications, scroll) },
+        topBar = { CortexHomeTopBar("My Reservations", currentRole, onRoleSwitch, onProfileClick, onNotificationsClick, unreadNotifications, scroll) },
         containerColor = CortexTheme.colors.surfaceBase,
         contentWindowInsets = WindowInsets(0),
     ) { inner ->

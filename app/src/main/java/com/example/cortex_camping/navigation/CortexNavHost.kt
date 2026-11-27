@@ -332,6 +332,8 @@ fun CortexApp(
             }
             composable(Routes.BROWSE) {
                 BrowseScreen(
+                    currentRole = vm.role,
+                    onRoleSwitch = { enterAs(it) },
                     campsites = vm.campsites,
                     unreadNotifications = vm.unreadCount,
                     onCampsiteClick = { nav.navigate(Routes.campsite(it.campsiteId)) },
@@ -346,6 +348,8 @@ fun CortexApp(
                 var chooseFor by rememberSaveable { mutableStateOf(entry.arguments?.getString("choose")) }
                 var campsiteFor by rememberSaveable { mutableStateOf<String?>(null) } // set once a winner picks a campsite
                 ReservationsScreen(
+                    currentRole = vm.role,
+                    onRoleSwitch = { enterAs(it) },
                     upcoming = vm.upcomingReservations,
                     past = vm.pastReservations,
                     offers = vm.bookingOffers,
@@ -386,6 +390,8 @@ fun CortexApp(
             }
             composable(Routes.LOTTERIES) {
                 LotteriesScreen(
+                    currentRole = vm.role,
+                    onRoleSwitch = { enterAs(it) },
                     lotteries = vm.myLotteries,
                     userId = vm.deviceId,
                     campsite = vm::campsite,
@@ -493,6 +499,9 @@ fun CortexApp(
 
             composable(Routes.OWNER_CAMPSITES) {
                 OwnerCampsitesScreen(
+                    currentRole = vm.role,
+                    onRoleSwitch = { enterAs(it) },
+                    onProfileClick = { nav.navigate(Routes.PROFILE) },
                     campsites = vm.myCampsites,
                     hasOngoingLottery = vm::hasOngoingLottery,
                     bookedDates = vm::bookedDates,
@@ -541,6 +550,9 @@ fun CortexApp(
             }
             composable(Routes.OWNER_RESERVATIONS) {
                 OwnerReservationsScreen(
+                    currentRole = vm.role,
+                    onRoleSwitch = { enterAs(it) },
+                    onProfileClick = { nav.navigate(Routes.PROFILE) },
                     reservations = vm.ownerReservations,
                     campsite = vm::campsite,
                     unread = vm.ownerUnreadCount,
@@ -553,6 +565,9 @@ fun CortexApp(
             }
             composable(Routes.OWNER_LOTTERIES) {
                 OwnerLotteriesScreen(
+                    currentRole = vm.role,
+                    onRoleSwitch = { enterAs(it) },
+                    onProfileClick = { nav.navigate(Routes.PROFILE) },
                     lotteries = vm.ownerLotteries,
                     invites = vm.lotteryInvites,
                     userId = vm.deviceId,
