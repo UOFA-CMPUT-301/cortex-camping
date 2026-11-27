@@ -28,6 +28,7 @@ import com.example.cortex_camping.ui.components.CortexSegmentedToggle
 import com.example.cortex_camping.ui.components.LotteryEntryCard
 import com.example.cortex_camping.ui.components.ResultsHeading
 import com.example.cortex_camping.ui.theme.CortexTheme
+import com.example.cortex_camping.viewmodel.Role
 
 /** Figma frame "My Lotteries" */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -36,6 +37,8 @@ fun LotteriesScreen(
     lotteries: List<Lottery>,
     userId: String,
     campsite: (String) -> Campsite?,
+    currentRole: Role,
+    onRoleSwitch: (Role) -> Unit,
     unreadNotifications: Int,
     onProfileClick: () -> Unit,
     onNotificationsClick: () -> Unit,
@@ -48,7 +51,7 @@ fun LotteriesScreen(
 
     Scaffold(
         modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
-        topBar = { CortexHomeTopBar("My Lotteries", onProfileClick, onNotificationsClick, unreadNotifications, scroll) },
+        topBar = { CortexHomeTopBar("My Lotteries", currentRole, onRoleSwitch, onProfileClick, onNotificationsClick, unreadNotifications, scroll) },
         containerColor = CortexTheme.colors.surfaceBase,
         contentWindowInsets = WindowInsets(0),
     ) { inner ->
