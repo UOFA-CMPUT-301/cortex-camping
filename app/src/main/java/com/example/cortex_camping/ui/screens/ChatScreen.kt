@@ -25,7 +25,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.cortex_camping.model.Campsite
 import com.example.cortex_camping.model.Message
@@ -35,7 +34,10 @@ import com.example.cortex_camping.ui.components.ChatBubble
 import com.example.cortex_camping.ui.components.CortexBackTopBar
 import com.example.cortex_camping.ui.components.CortexButton
 import com.example.cortex_camping.ui.components.CortexButtonStyle
-import com.example.cortex_camping.ui.components.CortexMediumTopBar
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import com.example.cortex_camping.ui.components.CortexCenteredTopBar
 import com.example.cortex_camping.ui.components.CortexTextField
 import com.example.cortex_camping.ui.components.formatDate
 import com.example.cortex_camping.ui.components.formatRange
@@ -82,7 +84,7 @@ fun OwnerChatScreen(
     status = reservation?.status?.label,
     messages = messages, userId = userId, otherLabel = guestName.substringBefore(" "),
     onSend = onSend,
-    topBar = { CortexMediumTopBar(guestName) },
+    topBar = { CortexCenteredTopBar(guestName) },
     headerExtra = { CortexButton("Back to reservations", onBack, style = CortexButtonStyle.OutlinedBrand) },
 )
 

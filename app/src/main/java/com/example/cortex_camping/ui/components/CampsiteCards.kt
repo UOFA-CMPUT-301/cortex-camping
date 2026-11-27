@@ -38,6 +38,9 @@ import com.example.cortex_camping.ui.theme.CortexTheme
 import com.example.cortex_camping.util.ImageUtils
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import com.example.cortex_camping.R
 
 @Composable
 fun CampsiteListCard(campsite: Campsite, onClick: () -> Unit, modifier: Modifier = Modifier) {
@@ -78,13 +81,26 @@ fun CampsitePhoto(imageUrl: String?, modifier: Modifier = Modifier) {
             model = ImageRequest.Builder(LocalContext.current)
                 .data(image)
                 .crossfade(true)
+                .placeholder(R.drawable.ic_launcher_foreground)
+                .error(R.drawable.ic_launcher_foreground)
+                .fallback(R.drawable.ic_launcher_foreground)
                 .build(),
             contentDescription = "Campsite photo",
             contentScale = ContentScale.Crop,
             modifier = modifier.background(CortexTheme.colors.surfaceDefault),
         )
     } else {
-        Box(modifier.background(CortexTheme.colors.surfaceDefault))
+        Box(
+            modifier = modifier.background(CortexTheme.colors.surfaceDefault),
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.ic_launcher_foreground),
+                contentDescription = "Placeholder campsite photo",
+                modifier = Modifier.size(48.dp),
+                contentScale = ContentScale.Fit,
+            )
+        }
     }
 }
 

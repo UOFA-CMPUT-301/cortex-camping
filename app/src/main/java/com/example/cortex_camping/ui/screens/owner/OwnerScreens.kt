@@ -53,7 +53,7 @@ import com.example.cortex_camping.ui.components.CortexButtonSize
 import com.example.cortex_camping.ui.components.CortexButtonStyle
 import com.example.cortex_camping.ui.components.CortexConfirmDialog
 import com.example.cortex_camping.ui.components.CortexDivider
-import com.example.cortex_camping.ui.components.CortexMediumTopBar
+import com.example.cortex_camping.ui.components.CortexCenteredTopBar
 import com.example.cortex_camping.ui.components.CortexSegmentedToggle
 import com.example.cortex_camping.ui.components.CampsitePhoto
 import com.example.cortex_camping.ui.components.GroupedSurface
@@ -88,11 +88,11 @@ private fun OwnerTabScaffold(
     unread: Int,
     content: LazyListContent,
 ) {
-    val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val scroll = TopAppBarDefaults.pinnedScrollBehavior()
     Scaffold(
         modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
         topBar = {
-            CortexMediumTopBar(
+            CortexCenteredTopBar(
                 title,
                 navigationIcon = {
                     RoleSwitchPill(currentRole = currentRole, onSwitchRole = onRoleSwitch)
