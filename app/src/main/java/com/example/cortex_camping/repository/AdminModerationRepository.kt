@@ -115,7 +115,7 @@ class AdminModerationRepository {
             .addOnFailureListener { onResult(it.message ?: "Image deletion failed. Please retry.") }
     }
 
-    /** Removes the reviewed rating atomically with its contribution to the campsite average. */
+    /** Removes the reviewed rating automatically with its contribution to the campsite average. */
     fun deleteReview(bookingId: String, expectedRating: Int, onResult: (String?) -> Unit) {
         if (!validateRecord(bookingId, onResult)) return
         val target = db.collection("reservations").document(bookingId)

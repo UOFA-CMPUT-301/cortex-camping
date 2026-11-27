@@ -484,11 +484,17 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
             .filter { it.recipientId == deviceId && !it.forOwner }
             .sortedByDescending { it.sentAt }
 
-    // TODO: notifications sent to this device as an owner (forOwner = true)
-    val ownerReceived: List<AppNotification> get() = emptyList()
+    // notifications sent to this device as an owner (forOwner = true)
+    val ownerReceived: List<AppNotification>
+        get() = notificationRepository.notifications
+            .filter { it.recipientId == deviceId && it.forOwner }
+            .sortedByDescending { it.sentAt }
 
-    // TODO: notifications this owner sent
-    val ownerSent: List<AppNotification> get() = emptyList()
+    // notifications this owner sent(?)
+    val ownerSent: List<AppNotification>
+        get() = notificationRepository.notifications
+            .filter { it.senderId == deviceId && it.forOwner }
+            .sortedByDescending { it.target }
 
     val unreadCount: Int get() = myNotifications.count { !it.read }
     val ownerUnreadCount: Int get() = ownerReceived.count { !it.read }
