@@ -248,7 +248,7 @@ fun LotteryFormScreen(
             CortexButton("Add / remove campsites", { pickCampsites = true }, Modifier.fillMaxWidth(), style = CortexButtonStyle.OutlinedBrand, touchTarget = 40.dp)
             if (selected.size > 1) {
                 Box {
-                    CortexTextField(featuredId?.let(nameOf::get).orEmpty(), {}, "Featured campsite (where campers enter)", placeholder = "Choose a featured campsite")
+                    CortexTextField(featuredId?.let(nameOf::get).orEmpty(), {}, "Featured campsite (main listing)", placeholder = "Choose a featured campsite")
                     Box(Modifier.matchParentSize().clickableNoRipple { pickFeatured = true })
                 }
             }
@@ -290,9 +290,9 @@ fun LotteryFormScreen(
         SingleSelectDialog(
             title = "Featured campsite",
             message = if (pendingSelection != null) {
-                "${featuredId?.let(nameOf::get) ?: "This campsite"} is where campers enter this lottery. Choose another campsite to feature before taking it out."
+                "${featuredId?.let(nameOf::get) ?: "This campsite"} is the main campsite this lottery is listed under. Choose another campsite to feature before taking it out."
             } else {
-                "Campers enter the lottery through this campsite. Winners can still book any campsite in it."
+                "This is the main campsite the lottery is listed under. Winners can still book any other campsite in the lottery, including ones invited owners add."
             },
             options = options.filter { it.first in choices },
             selected = featuredId,
@@ -308,7 +308,7 @@ fun LotteryFormScreen(
     if (featuredStuck) {
         InfoDialog("Featured campsite", { featuredStuck = false }) {
             Text(
-                "${featuredId?.let(nameOf::get) ?: "This campsite"} is where campers enter this lottery. Add another of your campsites to feature instead, or cancel the lottery from the Lotteries screen.",
+                "${featuredId?.let(nameOf::get) ?: "This campsite"} is the main campsite this lottery is listed under. Add another of your campsites to feature instead, or cancel the lottery from the Lotteries screen.",
                 style = MaterialTheme.typography.bodyMedium, color = CortexTheme.colors.textSecondary,
             )
         }

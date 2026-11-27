@@ -196,7 +196,7 @@ private fun LotteryTab(
         // campers only enter through the featured campsite: elsewhere the card says so and its
         // buttons enter that lottery directly
         val note = if (l.entryCampsiteId == campsite.campsiteId) null else
-            "Enter through the ${l.name} lottery" + (campsiteName(l.entryCampsiteId)?.let { " at $it" } ?: "") +
+            "Part of the ${l.name} lottery" + (campsiteName(l.entryCampsiteId)?.let { ", listed under $it" } ?: "") +
                 ". Winners can book this campsite too."
         CampsiteLotteryCard(
             lottery = l,
