@@ -38,10 +38,14 @@ import androidx.compose.ui.unit.dp
 import com.example.cortex_camping.ui.theme.CortexTheme
 import com.example.cortex_camping.viewmodel.Role
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import com.example.cortex_camping.ui.theme.CortexPalette
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
@@ -80,37 +84,56 @@ fun RoleSwitchPill(
     onSwitchRole: (Role) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val targetRole = if(currentRole == Role.User) Role.Owner else Role.User
-    val label = if (currentRole == Role.User) "Camper" else "Campsite Owner"
+    val roles = listOf(Role.User, Role.Owner)
 
     Surface(
-        onClick = { onSwitchRole(targetRole) },
         shape = RoundedCornerShape(100.dp),
         color = CortexTheme.colors.surfaceLow,
         border = BorderStroke(1.dp, CortexTheme.colors.borderSubtle),
-        modifier = modifier.height(36.dp),
+        modifier = modifier.width(130.dp).height(33.dp),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp),
+            modifier = Modifier.padding(2.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Icon(
-                imageVector = if (currentRole == Role.User) Icons.Outlined.LocationOn else Icons.Outlined.AccountCircle,
-                contentDescription = null,
-                modifier = Modifier.size(16.dp),
-                tint = CortexPalette.BrandPrimary,
-            )
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = CortexTheme.colors.textPrimary,
-            )
+            roles.forEach { role ->
+                val selected = currentRole == role
+                val label = if (role == Role.User) "Camper" else "Owner"
+                val icon = if (role == Role.User) Icons.Outlined.LocationOn else Icons.Outlined.AccountCircle
+
+                Surface(
+                    onClick = { if (!selected) onSwitchRole(role) },
+                    shape = RoundedCornerShape(100.dp),
+                    color = if (selected) CortexPalette.BrandPrimary else Color.Transparent,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            modifier = Modifier.size(12.dp),
+                            tint = if (selected) CortexPalette.BrandOnPrimary else CortexTheme.colors.textPrimary,
+                        )
+                        Spacer(Modifier.width(2.dp))
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                            color = if (selected) CortexPalette.BrandOnPrimary else CortexTheme.colors.textPrimary,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
         }
     }
 }
-
 
 @Composable
 fun BellAction(onClick: () -> Unit, unread: Int = 0) {
