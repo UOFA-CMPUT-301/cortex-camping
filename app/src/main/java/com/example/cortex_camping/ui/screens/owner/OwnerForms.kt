@@ -50,7 +50,9 @@ import com.example.cortex_camping.ui.components.DateTimeField
 import com.example.cortex_camping.ui.components.FormActionBar
 import com.example.cortex_camping.ui.components.CampsitePhoto
 import com.example.cortex_camping.ui.components.DateField
+import com.example.cortex_camping.ui.components.InfoDialog
 import com.example.cortex_camping.ui.components.MultiSelectDialog
+import com.example.cortex_camping.ui.components.SingleSelectDialog
 import com.example.cortex_camping.ui.theme.CortexPalette
 import com.example.cortex_camping.ui.theme.CortexTheme
 import java.time.LocalDate
@@ -184,7 +186,8 @@ fun LotteryFormScreen(
     val defaults = existing ?: Lottery()
     val options = campsites.map { it.campsiteId to it.name }
     var name by rememberSaveable { mutableStateOf(defaults.name) }
-    var selected by remember { mutableStateOf(defaults.campsiteIds.toSet()) }
+    val ownIds = options.map { it.first }.toSet()
+    var selected by remember { mutableStateOf(defaults.campsiteIds.filter { it in ownIds }.toSet()) }
     var capacity by rememberSaveable { mutableStateOf(defaults.capacity.toString()) }
     var winners by rememberSaveable { mutableStateOf(defaults.winners.toString()) }
     var waitlistOn by rememberSaveable { mutableStateOf(defaults.hasWaitlist) }
@@ -196,21 +199,43 @@ fun LotteryFormScreen(
     var stayUntil by remember { mutableStateOf(defaults.stayUntil) }
     var nights by rememberSaveable { mutableStateOf(defaults.nights.toString()) }
     var pickCampsites by remember { mutableStateOf(false) }
+    var featured by rememberSaveable { mutableStateOf(defaults.entryCampsiteId.takeIf { it in ownIds }.orEmpty()) }
+    // a campsite choice that drops the featured campsite, held back until a new one is picked
+    var pendingSelection by remember { mutableStateOf<Set<String>?>(null) }
+    var pickFeatured by remember { mutableStateOf(false) }
+    var featuredStuck by remember { mutableStateOf(false) }
+    // with a single campsite there's nothing to choose
+    val featuredId = featured.takeIf { it in selected } ?: selected.singleOrNull()
+    val nameOf = options.toMap()
     val selectedNames = options.filter { it.first in selected }.joinToString(", ") { it.second }
-    val lottery = defaults.copy(
-        name = name.trim(), campsiteIds = options.map { it.first }.filter { it in selected },
+    // campsites other owners listed stay in the lottery, the picker only shows the creator's own
+    val lottery = defaults.withOwnerCampsites(ownIds, options.map { it.first }.filter { it in selected }).copy(
+        name = name.trim(),
         capacity = capacity.toIntOrNull() ?: 0, winners = winners.toIntOrNull() ?: 0,
         // the capacity is optional, leaving it blank means the waitlist has no limit
         waitlistCapacity = if (waitlistOn) waitlistCap.toIntOrNull()?.takeIf { it > 0 } ?: NO_WAITLIST_LIMIT else 0,
         opensAt = opens, closesAt = closes, drawAt = draw,
         stayFrom = stayFrom, stayUntil = stayUntil, nights = nights.toIntOrNull() ?: 0,
+        featuredCampsiteId = featuredId.orEmpty(),
     )
-    val error = lottery.settingsError
+    val error = if (selected.isNotEmpty() && featuredId == null) "Choose a featured campsite." else lottery.settingsError
+
+    fun applyCampsites(chosen: Set<String>) {
+        pickCampsites = false
+        if (!isNew && featuredId != null && featuredId !in chosen) {
+            // campers already enter through it, so a replacement comes first
+            if (chosen.isEmpty()) featuredStuck = true else { pendingSelection = chosen; pickFeatured = true }
+            return
+        }
+        selected = chosen
+        featured = featuredId?.takeIf { it in chosen }.orEmpty()
+        if (chosen.size > 1 && featured.isBlank()) pickFeatured = true
+    }
 
     FormScaffold(
         title = if (isNew) "Create New Lottery" else "Edit Lottery",
         primaryLabel = if (saving) "Saving..." else if (isNew) "Create lottery" else "Save changes",
-        primaryEnabled = name.isNotBlank() && selected.isNotEmpty() && error == null && !saving,
+        primaryEnabled = name.isNotBlank() && featuredId != null && error == null && !saving,
         onPrimary = { onSave(lottery) },
         onCancel = onCancel,
     ) {
@@ -221,6 +246,12 @@ fun LotteryFormScreen(
                 Box(Modifier.matchParentSize().clickableNoRipple { pickCampsites = true })
             }
             CortexButton("Add / remove campsites", { pickCampsites = true }, Modifier.fillMaxWidth(), style = CortexButtonStyle.OutlinedBrand, touchTarget = 40.dp)
+            if (selected.size > 1) {
+                Box {
+                    CortexTextField(featuredId?.let(nameOf::get).orEmpty(), {}, "Featured campsite (main listing)", placeholder = "Choose a featured campsite")
+                    Box(Modifier.matchParentSize().clickableNoRipple { pickFeatured = true })
+                }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 CortexTextField(capacity, { capacity = it.filter(Char::isDigit) }, "Lottery capacity", Modifier.weight(1f), keyboardType = KeyboardType.Number)
                 CortexTextField(winners, { winners = it.filter(Char::isDigit) }, "Number of winners", Modifier.weight(1f), keyboardType = KeyboardType.Number)
@@ -252,7 +283,35 @@ fun LotteryFormScreen(
         }
     }
     if (pickCampsites) {
-        MultiSelectDialog("Campsites", options, selected, onConfirm = { selected = it; pickCampsites = false }, onDismiss = { pickCampsites = false })
+        MultiSelectDialog("Campsites", options, selected, onConfirm = ::applyCampsites, onDismiss = { pickCampsites = false })
+    }
+    if (pickFeatured) {
+        val choices = pendingSelection ?: selected
+        SingleSelectDialog(
+            title = "Featured campsite",
+            message = if (pendingSelection != null) {
+                "${featuredId?.let(nameOf::get) ?: "This campsite"} is the main campsite this lottery is listed under. Choose another campsite to feature before taking it out."
+            } else {
+                "This is the main campsite the lottery is listed under. Winners can still book any other campsite in the lottery, including ones invited owners add."
+            },
+            options = options.filter { it.first in choices },
+            selected = featuredId,
+            onConfirm = { id ->
+                pendingSelection?.let { selected = it }
+                featured = id
+                pendingSelection = null
+                pickFeatured = false
+            },
+            onDismiss = { pendingSelection = null; pickFeatured = false },
+        )
+    }
+    if (featuredStuck) {
+        InfoDialog("Featured campsite", { featuredStuck = false }) {
+            Text(
+                "${featuredId?.let(nameOf::get) ?: "This campsite"} is the main campsite this lottery is listed under. Add another of your campsites to feature instead, or cancel the lottery from the Lotteries screen.",
+                style = MaterialTheme.typography.bodyMedium, color = CortexTheme.colors.textSecondary,
+            )
+        }
     }
 }
 

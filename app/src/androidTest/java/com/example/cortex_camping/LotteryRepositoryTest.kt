@@ -83,7 +83,7 @@ class LotteryRepositoryTest {
         assertNull(enter(lottery, alice))
 
         // this copy is from before alice entered
-        assertNull(call { repo.saveLottery(lottery.copy(name = "Renamed"), it) })
+        assertNull(call { repo.saveLottery(lottery.copy(name = "Renamed"), setOf(TEST_CAMPSITE), it) })
 
         assertEquals(listOf(alice), entries(lottery))
     }
@@ -315,7 +315,7 @@ class LotteryRepositoryTest {
         created += lottery.id
 
         assertNull("Could not save the test lottery", call {
-            repo.saveLottery(lottery, it)
+            repo.saveLottery(lottery, setOf(TEST_CAMPSITE), it)
         })
 
         return lottery

@@ -7,7 +7,8 @@ import java.time.temporal.ChronoUnit
 enum class ReservationStatus(val label: String) {
     CONFIRMED("Confirmed"),
     PENDING("Pending"),
-    CANCELLED("Cancelled")
+    CANCELLED("Cancelled"), // the camper cancelled it
+    REJECTED("Rejected") // the campsite owner rejected it
 }
 
 data class Reservation(
@@ -19,8 +20,14 @@ data class Reservation(
     val guests: Int = 1,
     val status: ReservationStatus = ReservationStatus.CONFIRMED,
     val rating: Int = 0, // 0 means the entrant hasn't rated the stay yet
-    val lotteryId: String = "" // the lottery this stay was won in, blank if it wasn't from a lottery
+    val lotteryId: String = "", // the lottery this stay was won in, blank if it wasn't from a lottery
+    val rejectionReason: String = "" // the owner's optional reason, only set when the reservation was rejected
 ) {
+    // cancelled by the camper or rejected by the owner: the nights are free again
+    @get:Exclude
+    val isWithdrawn: Boolean
+        get() = status == ReservationStatus.CANCELLED || status == ReservationStatus.REJECTED
+
     @get:Exclude
     val nights: Int
         get() = ChronoUnit.DAYS.between(checkIn, checkOut).toInt()
@@ -34,15 +41,15 @@ data class Reservation(
         (status == ReservationStatus.CONFIRMED || status == ReservationStatus.PENDING) &&
                 !checkOut.isBefore(today)
 
-    // finished or cancelled reservations, displayed in the history list
+    // finished, cancelled or rejected reservations, displayed in the history list
     fun isPast(today: LocalDate = LocalDate.now()): Boolean =
-        status == ReservationStatus.CANCELLED || checkOut.isBefore(today)
+        isWithdrawn || checkOut.isBefore(today)
 }
 
     // list of active reservations, soonest first
     fun List<Reservation>.upcoming(today: LocalDate = LocalDate.now()) =
         filter { it.isActive(today) }.sortedBy { it.checkIn }
 
-    // finished or cancelled reservations, most recent first
+    // finished, cancelled or rejected reservations, most recent first
     fun List<Reservation>.past(today: LocalDate = LocalDate.now()) =
         filter { it.isPast(today) }.sortedByDescending { it.checkOut }

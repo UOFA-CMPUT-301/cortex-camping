@@ -27,6 +27,8 @@ import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -252,6 +254,40 @@ fun MultiSelectDialog(
             }
         },
         confirmButton = { CortexButton("Done", { onConfirm(current) }, style = CortexButtonStyle.Text) },
+        dismissButton = { CortexButton("Cancel", onDismiss, style = CortexButtonStyle.Text) },
+    )
+}
+
+/** Pick exactly one of [options]. Done stays off until something is picked. */
+@Composable
+fun SingleSelectDialog(
+    title: String,
+    message: String?,
+    options: List<Pair<String, String>>,
+    selected: String?,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var current by remember { mutableStateOf(selected?.takeIf { id -> options.any { it.first == id } }) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CortexTheme.colors.surfaceHigh,
+        title = { Text(title, style = MaterialTheme.typography.headlineSmall) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                message?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = CortexTheme.colors.textSecondary, modifier = Modifier.padding(bottom = 8.dp)) }
+                options.forEach { (id, label) ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable { current = id },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(id == current, null, colors = RadioButtonDefaults.colors(selectedColor = CortexPalette.BrandPrimary), modifier = Modifier.padding(12.dp))
+                        Text(label, style = MaterialTheme.typography.bodyLarge, color = CortexTheme.colors.textPrimary)
+                    }
+                }
+            }
+        },
+        confirmButton = { CortexButton("Done", { current?.let(onConfirm) }, style = CortexButtonStyle.Text, enabled = current != null) },
         dismissButton = { CortexButton("Cancel", onDismiss, style = CortexButtonStyle.Text) },
     )
 }

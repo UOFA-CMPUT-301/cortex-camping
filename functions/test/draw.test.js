@@ -58,6 +58,7 @@ test("a lottery is due once its draw time has passed", () => {
   assert.ok(isDue({ status: "ONGOING", drawAt: "2026-11-26T14:00" }, now));
   assert.ok(isDue({ status: "ONGOING", drawAt: "2026-11-26T13:59:59.5" }, now));
   assert.ok(!isDue({ status: "ONGOING", drawAt: "2026-11-26T14:01" }, now));
+  assert.ok(!isDue({ status: "CANCELLED", drawAt: "2026-11-26T13:00" }, now));
   assert.ok(!isDue({ status: "FINALIZED", drawAt: "2026-11-25T10:00" }, now));
   assert.ok(!isDue({ status: "ONGOING" }, now));
 });
@@ -106,6 +107,18 @@ test("winners, losers, the waitlist and the owner each get the right notificatio
     assert.equal(n.read, false);
     assert.equal(n.senderId, "");
   }
+});
+
+test("every owner sharing the lottery is told the draw is done", () => {
+  const lottery = {
+    id: "L1", ownerId: "owner", ownerIds: ["owner", "partner"], invitedOwnerIds: ["pending"], name: "Summer",
+    entries: entries("a"), waitlist: [],
+  };
+  const owners = drawNotifications(lottery, ["a"], "2026-11-26T14:00:00").filter((n) => n.forOwner);
+
+  assert.deepEqual(owners.map((n) => n.recipientId), ["owner", "partner"]);
+  assert.deepEqual(owners.map((n) => n.id), ["draw_L1_owner", "draw_L1_owner_partner"]);
+  for (const n of owners) assert.equal(n.body, "1 of 1 entries won.");
 });
 
 function fakeDb(lotteries) {

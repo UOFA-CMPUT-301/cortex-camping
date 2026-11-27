@@ -58,9 +58,14 @@ class LotteryRepository {
      * Creates a lottery, or updates it if it already has an id.
      *
      * @param lottery the lottery to save
+     * @param editorCampsites every campsite the creator owns, so other owners' campsites are kept
      * @param onResult called when done
      */
-    fun saveLottery(lottery: Lottery, onResult: (String?) -> Unit = {}) {
+    fun saveLottery(
+        lottery: Lottery,
+        editorCampsites: Set<String>,
+        onResult: (String?) -> Unit = {}
+    ) {
         // check if an id exists already, if not generate one
         if (lottery.id.isBlank()) {
             createLottery(lottery.copy(id = lotteriesRef.document().id), onResult)
@@ -71,7 +76,7 @@ class LotteryRepository {
         lotteriesRef.document(lottery.id).get()
             .addOnSuccessListener { document ->
                 if (document.exists()) {
-                    editLottery(lottery, onResult)
+                    editLottery(lottery, editorCampsites, onResult)
                 } else {
                     createLottery(lottery, onResult)
                 }
@@ -102,21 +107,191 @@ class LotteryRepository {
      * Applies the owner's edits to a running lottery.
      *
      * @param edited the lottery with the new settings
+     * @param editorCampsites every campsite the creator owns
      * @param onResult called when done
      */
-    private fun editLottery(edited: Lottery, onResult: (String?) -> Unit) {
+    private fun editLottery(
+        edited: Lottery,
+        editorCampsites: Set<String>,
+        onResult: (String?) -> Unit
+    ) {
         updateLottery(edited.id, onResult) { lottery ->
             check(lottery.status == LotteryStatus.ONGOING) {
                 "This lottery is already over."
             }
+            check(lottery.isCreator(edited.ownerId)) {
+                "Only the owner who created this lottery can change its settings."
+            }
             check(edited.capacity >= lottery.entries.size) {
                 "${lottery.entries.size} people have entered, so the capacity can't be lower than that."
             }
-            val updated = lottery.withSettingsFrom(edited)
+            val updated = lottery.withSettingsFrom(edited, editorCampsites)
             check(updated.waitlist.size <= updated.waitlistLimit) {
                 "${updated.waitlist.size} people are on the waitlist, so it can't be smaller than that."
             }
+            check(updated.entryCampsiteId in editorCampsites && updated.entryCampsiteId in updated.campsiteIds) {
+                "Choose another of your campsites to feature before taking this one out."
+            }
+            check(updated.campsiteIds.isNotEmpty()) {
+                "A lottery needs at least one campsite."
+            }
             updated
+        }
+    }
+
+    /**
+     * The creator pulls out before the draw, which cancels the whole lottery for every owner
+     * and entrant. A cancelled lottery is never drawn.
+     *
+     * @param lotteryId the lottery to cancel
+     * @param creatorId the owner cancelling, who has to be the lottery's creator
+     * @param onResult called when done
+     */
+    fun cancelLottery(
+        lotteryId: String,
+        creatorId: String,
+        onResult: (String?) -> Unit = {}
+    ) {
+        updateLottery(lotteryId, onResult) { lottery ->
+            check(lottery.isCreator(creatorId)) {
+                "Only the owner who created this lottery can cancel it."
+            }
+            check(lottery.status == LotteryStatus.ONGOING) {
+                if (lottery.status == LotteryStatus.CANCELLED) "This lottery is already cancelled."
+                else "The draw has already happened, so this lottery can't be cancelled."
+            }
+            lottery.copy(status = LotteryStatus.CANCELLED)
+        }
+    }
+
+    /**
+     * The creator invites another owner to list their campsites in the lottery.
+     *
+     * @param lotteryId the lottery to share
+     * @param creatorId the owner sending the invite, who has to be the lottery's creator
+     * @param inviteeId the owner being invited
+     * @param onResult called when done
+     */
+    fun inviteOwner(
+        lotteryId: String,
+        creatorId: String,
+        inviteeId: String,
+        onResult: (String?) -> Unit = {}
+    ) {
+        updateLottery(lotteryId, onResult) { lottery ->
+            check(lottery.isCreator(creatorId)) {
+                "Only the owner who created this lottery can invite other owners."
+            }
+            check(lottery.status != LotteryStatus.CANCELLED) {
+                "This lottery was cancelled."
+            }
+            check(inviteeId != creatorId) {
+                "You can't invite yourself."
+            }
+            check(!lottery.isOwner(inviteeId)) {
+                "That owner is already part of this lottery."
+            }
+            check(!lottery.isInvited(inviteeId)) {
+                "That owner has already been invited."
+            }
+            lottery.copy(invitedOwnerIds = lottery.invitedOwnerIds + inviteeId)
+        }
+    }
+
+    /**
+     * An invited owner accepts or declines. Accepting lets them add their campsites.
+     *
+     * @param lotteryId the lottery they were invited to
+     * @param ownerId the invited owner
+     * @param accept true to join, false to decline
+     * @param onResult called when done
+     */
+    fun respondToInvite(
+        lotteryId: String,
+        ownerId: String,
+        accept: Boolean,
+        onResult: (String?) -> Unit = {}
+    ) {
+        updateLottery(lotteryId, onResult) { lottery ->
+            check(lottery.isInvited(ownerId) && lottery.status != LotteryStatus.CANCELLED) {
+                "This invite is no longer open."
+            }
+            lottery.copy(
+                ownerIds = if (accept) lottery.allOwnerIds + ownerId else lottery.allOwnerIds,
+                invitedOwnerIds = lottery.invitedOwnerIds - ownerId
+            )
+        }
+    }
+
+    /**
+     * Sets which of one owner's campsites are listed in the lottery. Other owners' campsites stay.
+     *
+     * @param lotteryId the lottery to change
+     * @param ownerId the owner whose campsites these are
+     * @param owned every campsite that owner has
+     * @param chosen the campsites they want listed
+     * @param onResult called when done
+     */
+    fun setOwnerCampsites(
+        lotteryId: String,
+        ownerId: String,
+        owned: Set<String>,
+        chosen: Set<String>,
+        onResult: (String?) -> Unit = {}
+    ) {
+        updateLottery(lotteryId, onResult) { lottery ->
+            check(lottery.isOwner(ownerId)) {
+                "You're not part of this lottery."
+            }
+            check(lottery.status != LotteryStatus.CANCELLED) {
+                "This lottery was cancelled."
+            }
+            check(chosen.all { it in owned }) {
+                "You can only list your own campsites."
+            }
+            val updated = lottery.withOwnerCampsites(owned, chosen)
+            check(lottery.entryCampsiteId in updated.campsiteIds) {
+                "That's the lottery's featured campsite, so only its creator can replace it."
+            }
+            updated
+        }
+    }
+
+    /**
+     * Takes an owner out of the lottery along with their campsites, or cancels their invite.
+     * The creator can remove anyone else, and any other owner can remove themselves.
+     *
+     * @param lotteryId the lottery to change
+     * @param requesterId the owner asking
+     * @param ownerId the owner being removed
+     * @param owned every campsite the removed owner has
+     * @param onResult called when done
+     */
+    fun removeOwner(
+        lotteryId: String,
+        requesterId: String,
+        ownerId: String,
+        owned: Set<String>,
+        onResult: (String?) -> Unit = {}
+    ) {
+        updateLottery(lotteryId, onResult) { lottery ->
+            check(!lottery.isCreator(ownerId)) {
+                "The owner who created the lottery can't be removed from it."
+            }
+            check(lottery.isCreator(requesterId) || requesterId == ownerId) {
+                "Only the owner who created this lottery can remove other owners."
+            }
+            check(lottery.isOwner(ownerId) || lottery.isInvited(ownerId)) {
+                "That owner isn't part of this lottery."
+            }
+            val updated = lottery.withOwnerCampsites(owned, emptySet())
+            check(lottery.entryCampsiteId in updated.campsiteIds) {
+                "That's the lottery's featured campsite, so only its creator can replace it."
+            }
+            updated.copy(
+                ownerIds = lottery.allOwnerIds - ownerId,
+                invitedOwnerIds = lottery.invitedOwnerIds - ownerId
+            )
         }
     }
 
@@ -150,7 +325,7 @@ class LotteryRepository {
             check(!lottery.isFull) {
                 "This lottery is full. Join the waitlist instead."
             }
-            lottery.copy(entries = lottery.entries + entry)
+            lottery.copy(entries = lottery.entries + entry.copy(campsiteId = lottery.entryCampsiteId))
         }
     }
 
@@ -233,7 +408,7 @@ class LotteryRepository {
                 "The waitlist is full."
             }
 
-            lottery.copy(waitlist = lottery.waitlist + entry)
+            lottery.copy(waitlist = lottery.waitlist + entry.copy(campsiteId = lottery.entryCampsiteId))
         }
     }
 
@@ -295,6 +470,9 @@ class LotteryRepository {
             check(!reservation.checkIn.isBefore(lottery.stayFrom) &&
                     !reservation.checkOut.isAfter(lottery.stayUntil)) {
                 "Those dates are outside this lottery's stay window."
+            }
+            check(!reservation.checkIn.isBefore(LocalDate.now(LOTTERY_TIME_ZONE))) {
+                "That check-in date has already passed."
             }
 
             // the campsite's own availability: its open window and the nights the owner blocked off
@@ -460,8 +638,11 @@ class LotteryRepository {
         return mapOf(
             "id" to lottery.id,
             "ownerId" to lottery.ownerId,
+            "ownerIds" to lottery.allOwnerIds,
+            "invitedOwnerIds" to lottery.invitedOwnerIds,
             "name" to lottery.name,
             "campsiteIds" to lottery.campsiteIds,
+            "featuredCampsiteId" to lottery.featuredCampsiteId,
             "status" to lottery.status.name,
             "capacity" to lottery.capacity,
             "winners" to lottery.winners,
@@ -508,9 +689,14 @@ class LotteryRepository {
             Lottery(
                 id = id,
                 ownerId = data["ownerId"] as? String ?: "",
+                ownerIds = (data["ownerIds"] as? List<*>)
+                    ?.filterIsInstance<String>() ?: emptyList(),
+                invitedOwnerIds = (data["invitedOwnerIds"] as? List<*>)
+                    ?.filterIsInstance<String>() ?: emptyList(),
                 name = data["name"] as? String ?: "",
                 campsiteIds = (data["campsiteIds"] as? List<*>)
                     ?.filterIsInstance<String>() ?: emptyList(),
+                featuredCampsiteId = data["featuredCampsiteId"] as? String ?: "",
                 status = (data["status"] as? String)
                     ?.let { LotteryStatus.valueOf(it) }
                     ?: LotteryStatus.ONGOING,

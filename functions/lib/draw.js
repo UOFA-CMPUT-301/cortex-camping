@@ -82,7 +82,7 @@ function notification(id, fields, sentAt) {
   };
 }
 
-/** One notification for every entrant, everyone on the waitlist and the owner. Ids are fixed so a rerun overwrites them. */
+/** One notification for every entrant, everyone on the waitlist and every owner. Ids are fixed so a rerun overwrites them. */
 function drawNotifications(lottery, winnerIds, sentAt) {
   const name = lottery.name || "the lottery";
   const won = new Set(winnerIds);
@@ -130,10 +130,13 @@ function drawNotifications(lottery, winnerIds, sentAt) {
     }, sentAt));
   }
 
-  if (lottery.ownerId) {
-    const entrants = (lottery.entries || []).length;
-    out.push(notification(`draw_${lottery.id}_owner`, {
-      recipientId: lottery.ownerId,
+  // the creator plus every owner who accepted an invite; older lotteries only have ownerId
+  const ownerIds = [...new Set([lottery.ownerId, ...(lottery.ownerIds || [])].filter(Boolean))];
+  const entrants = (lottery.entries || []).length;
+  for (const ownerId of ownerIds) {
+    const id = ownerId === lottery.ownerId ? `draw_${lottery.id}_owner` : `draw_${lottery.id}_owner_${ownerId}`;
+    out.push(notification(id, {
+      recipientId: ownerId,
       kind: "SUCCESS",
       title: `Draw complete for ${name}`,
       body: entrants === 0
