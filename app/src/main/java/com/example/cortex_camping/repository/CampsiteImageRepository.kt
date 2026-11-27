@@ -8,8 +8,8 @@ import kotlinx.coroutines.tasks.await
 import java.util.UUID
 
 /**
- * Stores campsite photos in Firebase Storage under `campsites/{campsiteId}/`. Campsite documents
- * only hold the download URL returned by [upload].
+ * Stores campsite photos in Firebase Storage under `campsites/{campsiteId}/` and profile pictures
+ * under `entrants/{entrantId}/`.
  */
 class CampsiteImageRepository {
     // The bucket is named explicitly so an older google-services.json without one still works
@@ -23,8 +23,13 @@ class CampsiteImageRepository {
      * Uploads a JPEG under a new name and returns its download URL. Names are never reused, so a
      * replaced photo always has a different URL and can't be confused with a cached one.
      */
-    suspend fun upload(campsiteId: String, jpeg: ByteArray): String {
-        val ref = storage.reference.child("campsites/$campsiteId/${UUID.randomUUID()}.jpg")
+    suspend fun upload(campsiteId: String, jpeg: ByteArray): String = uploadTo("campsites/$campsiteId", jpeg)
+
+    /** Uploads a profile picture and returns its download URL. */
+    suspend fun uploadProfileImage(entrantId: String, jpeg: ByteArray): String = uploadTo("entrants/$entrantId", jpeg)
+
+    private suspend fun uploadTo(folder: String, jpeg: ByteArray): String {
+        val ref = storage.reference.child("$folder/${UUID.randomUUID()}.jpg")
         val metadata = storageMetadata {
             contentType = "image/jpeg"
             cacheControl = "private, max-age=31536000"

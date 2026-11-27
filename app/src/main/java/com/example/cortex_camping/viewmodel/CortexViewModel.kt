@@ -7,6 +7,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import com.example.cortex_camping.model.AppNotification
+import com.example.cortex_camping.model.NotificationKind
+import com.example.cortex_camping.model.NotificationTarget
 import com.example.cortex_camping.model.Campsite
 import com.example.cortex_camping.model.CampsiteOwner
 import com.example.cortex_camping.model.Entrant
@@ -33,8 +35,15 @@ import com.example.cortex_camping.repository.CampsiteRepository
 import com.example.cortex_camping.repository.ReservationRepository
 import java.util.UUID
 import com.example.cortex_camping.repository.AdminModerationRepository
+import com.example.cortex_camping.repository.EntrantRepository
 import com.example.cortex_camping.repository.NotificationRepository
 import com.example.cortex_camping.model.ReservationNotifications
+import com.example.cortex_camping.model.CampsiteRating
+import com.example.cortex_camping.model.past
+import com.example.cortex_camping.model.upcoming
+import com.example.cortex_camping.model.Admin
+import com.example.cortex_camping.model.AdminRepository
+import com.example.cortex_camping.repository.CampsiteOwnerRepository
 
 enum class Role(val label: String) { User("Camper"), Owner("Campsite owner"), Admin("Admin") }
 
@@ -42,6 +51,10 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     val deviceId: String = DeviceUtils.getDeviceId(application)
 
+
+    private val entrantRepository = EntrantRepository()
+    private val ownerRepository = CampsiteOwnerRepository()
+    private val adminRepository = AdminRepository()
     private val campsiteRepository = CampsiteRepository()
     private val imageRepository = CampsiteImageRepository()
     private val moderationRepository = AdminModerationRepository()
@@ -54,9 +67,9 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     private val reservationRepository = ReservationRepository()
     private val notificationRepository = NotificationRepository()
 
-    // TODO: return false until the entrant, owner and admin repositories have loaded,
-    //  otherwise the app picks its start screen before it knows who the user is
-    val isLoaded: Boolean get() = true
+    // false until the entrant, owner and admin repositories have loaded,
+    // otherwise the app picks its start screen before it knows who the user is
+    val isLoaded: Boolean get() = entrantRepository.loaded && ownerRepository.loaded && adminRepository.loaded
 
     var role by mutableStateOf(Role.User)
 
@@ -65,19 +78,31 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     // Current user
 
-    // TODO: look up deviceId in EntrantRepository
-    val entrant: Entrant? get() = null
+    // looks up deviceId in the entrant database
+    val entrant: Entrant? get() = entrantRepository.entrants.firstOrNull { it.id == deviceId }
 
-    // TODO: look up deviceId in CampsiteOwnerRepository
-    val owner: CampsiteOwner? get() = null
+    // looks up deviceId in the owner database
+    val owner: CampsiteOwner? get() = ownerRepository.owners.firstOrNull { it.id == deviceId }
+
+    // looks up deviceId in the admin database
+    val admin: Admin? get() = adminRepository.admins.firstOrNull { it.id == deviceId }
+
+    val hasAdminProfile: Boolean get() = admin != null
 
     val isAdmin: Boolean get() = role == Role.Admin
+
+    val availableRoles: List<Role> get() = RoleAccess.availableRoles(isRegistered, hasAdminProfile, owner != null)
+
+    val canLogIn: Boolean get() = RoleAccess.canLogIn(isRegistered, hasAdminProfile, owner != null)
     val adminError: String? get() = moderationRepository.error
 
     val isRegistered: Boolean get() = entrant != null
 
-    // TODO: look up the name in EntrantRepository
-    fun entrantName(id: String): String = "Camper"
+    fun entrantName(id: String): String = entrantRepository.entrants
+        .firstOrNull { it.id == id }
+        ?.name
+        ?.takeIf { it.isNotBlank() }
+        ?: "Camper"
 
     // Moderation profiles provide owner names on the admin browse screens.
     fun ownerName(id: String): String = managedUsers.firstOrNull { it.isOwner && it.id == id }?.name ?: "Campsite owner"
@@ -102,17 +127,92 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     // Profile
 
-    // TODO: save a new Entrant with EntrantRepository.saveOrUpdateEntrant
-    fun register(name: String, email: String, phone: String) {}
+    // saves entrant data to the database, using deviceID as their id
+    fun register(name: String, email: String, phone: String, image: String? = null, onImageError: (String) -> Unit = {}) {
+        val newEntrant = Entrant(
+            id = deviceId,
+            name = name,
+            email = email,
+            phoneNumber = phone,
+        )
+        entrantRepository.saveOrUpdateEntrant(deviceId, newEntrant)
+        if (image != null) saveProfile(newEntrant, newEntrant, image, onSaved = {}, onError = onImageError)
+    }
 
-    // TODO: save the changes to the current entrant
-    fun updateProfile(name: String, email: String, phone: String) {}
+    // updates user profile in firebase
+    fun updateProfile(
+        name: String,
+        email: String,
+        phone: String,
+        image: String?,
+        onSaved: () -> Unit = {},
+        onError: (String) -> Unit = {},
+    ) {
+        val current = entrant ?: return
+        val updated = current.copy(name = name, email = email, phoneNumber = phone)
+        saveProfile(current, updated, image, onSaved, onError)
+    }
 
-    // TODO: save the entrant's notification settings
-    fun updatePrefs(updated: Entrant) {}
+    /**
+     * Saves the profile along with its picture. A new photo is uploaded first, and if that fails
+     * nothing is saved and [onError] is called. The old picture is deleted once it's replaced
+     * or removed.
+     */
+    private fun saveProfile(current: Entrant, updated: Entrant, image: String?, onSaved: () -> Unit, onError: (String) -> Unit) {
+        val stored = current.profileImageUrl
+        when (val change = ProfileImageChange.between(stored, image)) {
+            ProfileImageChange.Keep -> {
+                entrantRepository.saveOrUpdateEntrant(deviceId, updated.copy(profileImageUrl = stored))
+                onSaved()
+            }
+            ProfileImageChange.Remove -> {
+                entrantRepository.saveOrUpdateEntrant(deviceId, updated.copy(profileImageUrl = null)) { error ->
+                    if (error == null) imageRepository.delete(stored)
+                }
+                onSaved()
+            }
+            is ProfileImageChange.Upload -> viewModelScope.launch {
+                val jpeg = try {
+                    ImageUtils.encodeAsJpeg(getApplication(), change.uri)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e("CortexViewModel", "Couldn't read profile picture", e)
+                    onError("Couldn't use that picture. Nothing was saved, please pick a different one.")
+                    return@launch
+                }
+                val uploaded = try {
+                    imageRepository.uploadProfileImage(deviceId, jpeg)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e("CortexViewModel", "Couldn't upload profile picture", e)
+                    onError("Couldn't upload your picture. Nothing was saved, please try again.")
+                    return@launch
+                }
+                entrantRepository.saveOrUpdateEntrant(deviceId, updated.copy(profileImageUrl = uploaded)) { error ->
+                    imageRepository.delete(if (error == null) stored else uploaded)
+                }
+                onSaved()
+            }
+        }
+    }
 
-    // TODO: EntrantRepository.deleteEntrant
-    fun deleteProfile() {}
+    // saves the entrant's notification settings
+    fun updatePrefs(updated: Entrant) {
+        entrantRepository.saveOrUpdateEntrant(deviceId, updated)
+    }
+
+    fun ensureEntrant() {
+        RoleAccess.entrantFor(deviceId, entrant, admin)?.let { entrantRepository.saveOrUpdateEntrant(deviceId, it) }
+    }
+
+    // deletes user profile from firebase
+    fun deleteProfile() {
+        val image = entrant?.profileImageUrl
+        entrantRepository.deleteEntrant(deviceId)
+        imageRepository.delete(image)
+    }
 
     // Reservations (entrant)
 
@@ -121,13 +221,11 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     // the entrant's active reservations
     val upcomingReservations: List<Reservation>
-        get() = myReservations.filter {
-            it.status != ReservationStatus.CANCELLED && !it.checkOut.isBefore(LocalDate.now())
-        }
+        get() = myReservations.upcoming()
 
     // the entrant's past reservations
     val pastReservations: List<Reservation>
-        get() = myReservations.filter { it.checkOut.isBefore(LocalDate.now()) }
+        get() = myReservations.past()
 
     // lotteries the entrant won but hasn't picked dates for yet
     val bookingOffers: List<Lottery>
@@ -176,7 +274,7 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     // marks the reservation cancelled and frees its nights, then sends the entrant
     // TODO: let the owner know
     fun cancelReservation(reservation: Reservation, onResult: (String?) -> Unit = {}) {
-        reservationRepository.cancel(reservation) { error ->
+        reservationRepository.cancel(reservation, deviceId) { error ->
             if (error == null) {
                 val name = campsite(reservation.campsiteId)?.name ?: "your campsite"
                 notificationRepository.send(ReservationNotifications.cancelled(reservation, name))
@@ -185,8 +283,15 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // TODO: save the rating on the reservation and update the campsite's average
-    fun rate(reservation: Reservation, stars: Int) {}
+    // saves the rating on the reservation and updates the campsite's average (US 01.13.01)
+    fun rate(reservation: Reservation, stars: Int, onResult: (String?) -> Unit = {}) {
+        val problem = CampsiteRating.problem(reservation, stars, LocalDate.now())
+        if (problem != null) {
+            onResult(problem)
+            return
+        }
+        reservationRepository.rate(reservation, stars, onResult)
+    }
 
     // Lotteries (entrant)
 
@@ -257,8 +362,9 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     // Owner
 
-    // TODO: create a CampsiteOwner for this device if there isn't one yet
-    fun ensureOwner() {}
+    fun ensureOwner() {
+        RoleAccess.ownerFor(deviceId, owner, entrant, admin)?.let { ownerRepository.saveOrUpdateOwner(deviceId, it) }
+    }
 
     val myCampsites: List<Campsite>
         get() = campsiteRepository.campsites.filter { it.ownerId == deviceId }
@@ -272,8 +378,14 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     fun hasOngoingLottery(campsite: Campsite): Boolean =
         lotteriesFor(campsite.campsiteId).any { it.status == LotteryStatus.ONGOING }
 
-    // TODO: every entrant's reservations at the owner's campsites, with the guest's name
-    val ownerReservations: List<GuestReservation> get() = emptyList()
+    // Include every guest's reservation at any campsite owned by this device.
+    val ownerReservations: List<GuestReservation>
+        get() {
+            val campsiteIds = myCampsites.map { it.campsiteId }.toSet()
+            return reservationRepository.reservations
+                .filter { it.campsiteId in campsiteIds }
+                .map { GuestReservation(it, entrantName(it.userId)) }
+        }
 
     /**
      * Uploads a newly picked photo to Firebase Storage, then writes the campsite with its URL. If
@@ -339,11 +451,28 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
         lotteryRepository.saveLottery(lottery.copy(ownerId = lottery.ownerId.ifBlank { deviceId }), onResult)
     }
 
-    // TODO: send a notification to everyone on the waitlist
-    fun notifyWaitlist(lottery: Lottery) {}
+    // Send one in-app notification per waitlisted user.
+    fun notifyWaitlist(lottery: Lottery) {
+        lottery.waitlist.filter { it.userId.isNotBlank() }.distinctBy { it.userId }.forEach { entry ->
+            notificationRepository.send(
+                AppNotification(
+                    recipientId = entry.userId,
+                    senderId = deviceId,
+                    kind = NotificationKind.LOTTERY_UPDATED,
+                    title = "Lottery waitlist update",
+                    body = "You are on the waitlist for ${lottery.name}. Check the lottery for the latest details.",
+                    link = "View lottery →",
+                    campsiteId = entry.campsiteId,
+                    target = NotificationTarget.CAMPSITE_LOTTERY,
+                    forOwner = false
+                )
+            )
+        }
+    }
 
-    // TODO: pick the winners, finalize the lottery and notify every entrant
-    fun runDraw(lottery: Lottery) {}
+    fun runDraw(lottery: Lottery, onResult: (String?) -> Unit = {}) {
+        lotteryRepository.drawNow(lottery.id, onResult)
+    }
 
     fun bookedDates(campsite: Campsite): Set<LocalDate> = takenDates(campsite)
 
@@ -396,6 +525,18 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
 
     // Admin
 
+    val ratedReservations: List<Reservation>
+        get() = reservationRepository.reservations.filter { it.rating != 0 }
+            .sortedByDescending { it.checkOut }
+
+    fun deleteReview(reservation: Reservation, onResult: (String?) -> Unit) {
+        if (!isAdmin) {
+            onResult("Switch to the admin role to remove ratings.")
+            return
+        }
+        moderationRepository.deleteReview(reservation.bookingId, reservation.rating, onResult)
+    }
+
     // Profiles displayed by the admin user browser.
     val managedUsers: List<ManagedUser> get() = moderationRepository.users
 
@@ -422,13 +563,11 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // TODO: include notifications once notification storage is implemented
-    // TODO: improve formatting of log info (e.g. convert timestamp, use name instead of id)
+    // Both repositories expose live state, so the admin log updates as activity arrives.
     val communicationLogs: List<CommunicationLog>
-        get() = messageRepository.messages
-            .sortedByDescending { it.sentAt }
-            .map { message ->
-                CommunicationLog(
+        get() {
+            val messages = messageRepository.messages.map { message ->
+                message.sentAt to CommunicationLog(
                     id = "message-${message.id.ifBlank { "${message.campsiteId}-${message.entrantId}-${message.sentAt}" }}",
                     type = LogType.Message,
                     subject = "Campsite ${message.campsiteId}",
@@ -437,4 +576,18 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
                     message = message.text
                 )
             }
+            val notifications = notificationRepository.notifications.map { notification ->
+                notification.sentAt to CommunicationLog(
+                    id = "notification-${notification.id}",
+                    type = LogType.Notification,
+                    subject = notification.title,
+                    route = "Sender ${notification.senderId.ifBlank { "System" }} · Recipient ${notification.recipientId}",
+                    meta = "${if (notification.forOwner) "Owner" else "Camper"} · ${notification.kind} · ${notification.sentAt} · ${if (notification.read) "Read" else "Unread"}",
+                    message = notification.body
+                )
+            }
+            return (messages + notifications)
+                .sortedByDescending { it.first }
+                .map { it.second }
+        }
 }

@@ -145,4 +145,16 @@ class LotteryTest {
         assertEquals(entries("a", "b", "c"), updated.entries)
         assertEquals(entries("d"), updated.waitlist)
     }
+
+    @Test
+    fun `the draw can only be run once entry has closed`() {
+        assertFalse(lottery.canRunDraw(may(10)))
+        assertTrue(lottery.canRunDraw(may(10).plusMinutes(1)))
+        assertTrue(lottery.canRunDraw(may(11)))
+    }
+
+    @Test
+    fun `a lottery that has been drawn can't be drawn again`() {
+        assertFalse(lottery.copy(status = LotteryStatus.FINALIZED).canRunDraw(may(11)))
+    }
 }

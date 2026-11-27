@@ -1,6 +1,7 @@
 package com.example.cortex_camping.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -9,6 +10,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -18,6 +21,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.text.input.TextFieldLineLimits
@@ -82,22 +88,37 @@ fun ProfileFormCard(
     state: ProfileFormState,
     onChange: (ProfileFormState) -> Unit,
     initials: String,
-    avatarHint: String,
-    onEditAvatar: () -> Unit,
+    imageUrl: String?,
+    onPickImage: () -> Unit,
+    onRemoveImage: () -> Unit,
     modifier: Modifier = Modifier,
     footer: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = CortexTheme.colors
+    var menuOpen by remember { mutableStateOf(false) }
     CortexOutlinedCard(modifier) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                ProfileAvatar(initials.ifBlank { "?" })
-                IconButton(onClick = onEditAvatar) {
-                    Icon(Icons.Filled.Edit, contentDescription = "Change profile picture", tint = CortexPalette.BrandPrimary)
+                ProfileAvatar(initials.ifBlank { "?" }, imageUrl = imageUrl)
+                Box {
+                    IconButton(onClick = { if (imageUrl == null) onPickImage() else menuOpen = true }) {
+                        Icon(
+                            Icons.Filled.Edit,
+                            contentDescription = if (imageUrl == null) "Add profile picture" else "Change or remove profile picture",
+                            tint = CortexPalette.BrandPrimary,
+                        )
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(text = { Text("Change picture") }, onClick = { menuOpen = false; onPickImage() })
+                        DropdownMenuItem(text = { Text("Remove picture") }, onClick = { menuOpen = false; onRemoveImage() })
+                    }
                 }
                 Column {
                     Text("Your profile", style = MaterialTheme.typography.bodyMedium, color = colors.textPrimary)
-                    Text(avatarHint, style = MaterialTheme.typography.bodySmall, color = colors.textSecondary)
+                    Text(
+                        if (imageUrl == null) "Using your initials · Profile picture is optional" else "Tap the pencil to change or remove your picture",
+                        style = MaterialTheme.typography.bodySmall, color = colors.textSecondary,
+                    )
                 }
             }
             CortexTextField(state.fullName, { onChange(state.copy(fullName = it)) }, "Full name")

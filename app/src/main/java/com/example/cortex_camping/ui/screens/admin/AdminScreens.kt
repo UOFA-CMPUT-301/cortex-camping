@@ -102,6 +102,7 @@ fun AdminDashboardScreen(
     onUsers: () -> Unit,
     onImages: () -> Unit,
     onLogs: () -> Unit,
+    onReviews: () -> Unit,
     onSpoofUser: () -> Unit,
     onSpoofOwner: () -> Unit,
 ) {
@@ -121,6 +122,7 @@ fun AdminDashboardScreen(
         item { InfoActionCard("Manage Campsites", listOf("Review campsite listings and details."), "Open campsites", onCampsites) }
         item { InfoActionCard("Manage Users", listOf("Manage owners and user profiles."), "Open users", onUsers) }
         item { InfoActionCard("Manage Images", listOf("Review images uploaded to campsites."), "Open images", onImages) }
+        item { InfoActionCard("Manage Ratings", listOf("Review and remove campsite ratings."), "Open ratings", onReviews) }
         item { InfoActionCard("Communications Log", listOf("View all sent notifications and messages."), "View logs", onLogs) }
     }
 }
@@ -225,6 +227,47 @@ fun AdminImagesScreen(
         if (c == null) { pending = null; return@let }
         CortexConfirmDialog("Delete image?", "The cover photo for ${c.name} will be removed.",
             "Delete image", destructive = true, onConfirm = { onDelete(c); pending = null }, onDismiss = { pending = null })
+    }
+}
+
+@Composable
+fun AdminReviewsScreen(
+    reservations: List<com.example.cortex_camping.model.Reservation>,
+    campsite: (String) -> Campsite?,
+    entrantName: (String) -> String,
+    onBack: () -> Unit,
+    onDelete: (com.example.cortex_camping.model.Reservation) -> Unit,
+) {
+    var pending by rememberSaveable { mutableStateOf<String?>(null) }
+    AdminScaffold("Manage Ratings", onBack) {
+        item { SectionTitle("All ratings · ${reservations.size}") }
+        if (reservations.isEmpty()) item {
+            Text("No ratings yet.", color = CortexTheme.colors.textSecondary)
+        }
+        items(reservations, key = { it.bookingId }) { reservation ->
+            val site = campsite(reservation.campsiteId)
+            ManagementCard(
+                title = site?.name ?: "Removed campsite",
+                subtitle = entrantName(reservation.userId),
+                meta = "${reservation.rating} stars · ${reservation.checkIn} – ${reservation.checkOut}",
+                leading = { modifier -> CampsitePhoto(site, modifier) },
+            ) {
+                Text("Booking: ${reservation.bookingId}", style = MaterialTheme.typography.bodySmall)
+                CortexButton("Remove rating", { pending = reservation.bookingId }, Modifier.fillMaxWidth())
+            }
+        }
+    }
+    pending?.let { id ->
+        val reservation = reservations.firstOrNull { it.bookingId == id }
+        if (reservation == null) { pending = null; return@let }
+        CortexConfirmDialog(
+            title = "Remove rating?",
+            text = "This rating will be removed and the campsite average updated. The reservation will be kept.",
+            confirmLabel = "Remove rating",
+            destructive = true,
+            onConfirm = { onDelete(reservation); pending = null },
+            onDismiss = { pending = null },
+        )
     }
 }
 

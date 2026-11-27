@@ -3,7 +3,11 @@ package com.example.cortex_camping.model
 import com.google.firebase.firestore.Exclude
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.ZoneId
 import java.time.temporal.ChronoUnit
+
+// lottery times are Edmonton times, matching TIME_ZONE in functions/lib/draw.js
+val LOTTERY_TIME_ZONE: ZoneId = ZoneId.of("America/Edmonton")
 
 // waitlistCapacity value for a waitlist that anyone can join
 const val NO_WAITLIST_LIMIT = -1
@@ -101,6 +105,9 @@ data class Lottery(
             winnerIds = winnerIds
         )
     }
+
+    fun canRunDraw(now: LocalDateTime = LocalDateTime.now(LOTTERY_TIME_ZONE)): Boolean =
+        status == LotteryStatus.ONGOING && now.isAfter(closesAt)
 
     fun entryFor(userId: String): LotteryEntry? = entries.firstOrNull { it.userId == userId }
 

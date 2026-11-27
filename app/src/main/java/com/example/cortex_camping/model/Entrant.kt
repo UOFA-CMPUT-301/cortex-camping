@@ -7,6 +7,7 @@ data class Entrant(
     val name: String = "",
     val email: String = "",
     val phoneNumber: String = "",
+    val profileImageUrl: String? = null,
     val reservations: List<Reservation> = emptyList(),
     // notification settings from the Profile & Settings screen
     val notificationsEnabled: Boolean = true,

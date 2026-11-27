@@ -1,6 +1,7 @@
 package com.example.cortex_camping.repository
 
 import androidx.compose.runtime.mutableStateListOf
+import com.example.cortex_camping.model.LOTTERY_TIME_ZONE
 import com.example.cortex_camping.model.Lottery
 import com.example.cortex_camping.model.LotteryEntry
 import com.example.cortex_camping.model.LotteryStatus
@@ -346,6 +347,33 @@ class LotteryRepository {
                 lotteryDoc,
                 mapOf("claimedIds" to FieldValue.arrayUnion(reservation.userId))
             )
+            null
+        }
+            .addOnSuccessListener { onResult(null) }
+            .addOnFailureListener { onResult(it.message ?: "Something went wrong.") }
+    }
+
+    /**
+     * Moves the draw time to now. The drawLottery Cloud Function then draws the lottery and
+     * notifies everyone within a few seconds.
+     */
+    fun drawNow(lotteryId: String, onResult: (String?) -> Unit = {}) {
+        if (lotteryId.isBlank()) {
+            onResult("Invalid lottery ID.")
+            return
+        }
+        val lotteryDoc = lotteriesRef.document(lotteryId)
+
+        db.runTransaction { transaction ->
+            val now = LocalDateTime.now(LOTTERY_TIME_ZONE)
+            val lottery = transaction.readLottery(lotteryDoc)
+            check(lottery.status == LotteryStatus.ONGOING) {
+                "This lottery has already been drawn."
+            }
+            check(lottery.canRunDraw(now)) {
+                "Entry is still open, so the draw can't run yet."
+            }
+            transaction.update(lotteryDoc, "drawAt", now.toString())
             null
         }
             .addOnSuccessListener { onResult(null) }

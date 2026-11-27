@@ -69,7 +69,6 @@ import com.example.cortex_camping.ui.screens.NotificationFeedScreen
 import com.example.cortex_camping.ui.theme.CortexPalette
 import com.example.cortex_camping.ui.theme.CortexTheme
 import java.time.LocalDate
-import java.time.LocalDateTime
 
 data class GuestReservation(val reservation: Reservation, val guestName: String)
 
@@ -238,6 +237,18 @@ fun OwnerReservationsScreen(
     OwnerTabScaffold("Reservations", onNotifications, unread) {
         item { CortexSegmentedToggle(listOf("Upcoming", "Past", "Cancelled"), tab, { tab = it }, Modifier.padding(bottom = 4.dp)) }
         item { ResultsHeading(heading, "${visible.size} booking${if (visible.size == 1) "" else "s"}") }
+        if (visible.isEmpty()) item {
+            Text(
+                when (tab) {
+                    0 -> "No upcoming reservations for your campsites yet."
+                    1 -> "No past reservations for your campsites yet."
+                    else -> "No cancelled reservations for your campsites."
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = CortexTheme.colors.textSecondary,
+                modifier = Modifier.padding(vertical = 24.dp),
+            )
+        }
         items(visible, key = { it.reservation.bookingId }) { item ->
             val r = item.reservation
             val site = campsite(r.campsiteId)
@@ -324,7 +335,7 @@ fun OwnerLotteriesScreen(
                     if (ongoing && l.hasWaitlist) CortexButton("View waitlist", { waitlistFor = l.id }, Modifier.weight(1f), style = CortexButtonStyle.OutlinedBrand)
                     else Box(Modifier.weight(1f))
                 }
-                if (ongoing && LocalDateTime.now().isAfter(l.closesAt)) {
+                if (l.canRunDraw()) {
                     CortexButton("Run draw", { drawFor = l.id }, Modifier.fillMaxWidth())
                 }
                 if (ongoing && l.hasWaitlist) {

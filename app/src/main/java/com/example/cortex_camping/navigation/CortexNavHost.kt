@@ -3,12 +3,16 @@ package com.example.cortex_camping.navigation
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -25,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -42,12 +47,15 @@ import com.example.cortex_camping.model.AppNotification
 import com.example.cortex_camping.model.NotificationTarget
 import com.example.cortex_camping.ui.components.CortexBottomBar
 import com.example.cortex_camping.ui.components.CortexButton
+import com.example.cortex_camping.ui.components.CortexButtonSize
 import com.example.cortex_camping.ui.components.CortexButtonStyle
 import com.example.cortex_camping.ui.components.InfoDialog
 import com.example.cortex_camping.ui.components.LocalRoleSwitcher
 import com.example.cortex_camping.ui.components.OwnerBottomBar
 import com.example.cortex_camping.ui.components.OwnerTab
 import com.example.cortex_camping.ui.components.TopLevelTab
+import com.example.cortex_camping.ui.screens.WelcomeScreen
+import com.example.cortex_camping.ui.screens.LoginRoleScreen
 import com.example.cortex_camping.ui.screens.BrowseScreen
 import com.example.cortex_camping.ui.screens.CampsiteDetailsScreen
 import com.example.cortex_camping.ui.screens.ChatScreen
@@ -78,6 +86,8 @@ import com.example.cortex_camping.viewmodel.Role
 import kotlinx.coroutines.launch
 
 object Routes {
+    const val WELCOME = "welcome"
+    const val LOGIN_ROLE = "login_role"
     const val REGISTER = "register"
     const val BROWSE = "browse"
     const val RESERVATIONS = "reservations?choose={choose}"
@@ -101,6 +111,7 @@ object Routes {
     const val ADMIN_CAMPSITES = "admin/campsites"
     const val ADMIN_USERS = "admin/users"
     const val ADMIN_IMAGES = "admin/images"
+    const val ADMIN_REVIEWS = "admin/reviews"
     const val ADMIN_LOGS = "admin/logs"
 
     fun reservations(chooseLotteryId: String? = null) = "reservations" + (chooseLotteryId?.let { "?choose=$it" } ?: "")
@@ -113,7 +124,7 @@ object Routes {
 }
 
 private fun homeFor(role: Role, registered: Boolean) = when (role) {
-    Role.User -> if (registered) Routes.BROWSE else Routes.REGISTER
+    Role.User -> if (registered) Routes.BROWSE else Routes.WELCOME
     Role.Owner -> Routes.OWNER_CAMPSITES
     Role.Admin -> Routes.ADMIN
 }
@@ -167,26 +178,44 @@ private fun Context.openExternal(uri: String): Boolean =
     runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri))) }.isSuccess
 
 @Composable
-fun CortexApp(vm: CortexViewModel = viewModel()) {
+fun CortexApp(
+    vm: CortexViewModel = viewModel(),
+    tappedNotification: AppNotification? = null, // the push notification that opened the app
+    onTappedNotificationShown: () -> Unit = {},
+) {
     if (!vm.isLoaded) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         return
     }
-    // Decided once, when the profiles first load. Later role changes navigate explicitly.
-    val startDestination = remember {
-        vm.role = vm.startingRole()
-        homeFor(vm.role, vm.isRegistered)
-    }
+    val startDestination = Routes.WELCOME // app defaults to the Welcome page on app launch
+
     val nav = rememberNavController()
     val backStack by nav.currentBackStackEntryAsState()
     val route = backStack?.destination?.route
     val showUserBar = tabFor(route) != null || route in setOf(Routes.CAMPSITE, Routes.PROFILE, Routes.EDIT_PROFILE, Routes.NOTIFICATIONS)
     val showOwnerBar = route in setOf(Routes.OWNER_CAMPSITES, Routes.OWNER_RESERVATIONS, Routes.OWNER_LOTTERIES, Routes.OWNER_NOTIFICATIONS)
     var showRolePicker by remember { mutableStateOf(false) }
+    // true while an owner with no camper profile (e.g. they deleted it) is registering one from role select
+    var registeringCamper by rememberSaveable { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     fun toast(msg: String) { scope.launch { snackbar.showSnackbar(msg) } }
+    fun enterAs(role: Role) {
+        if (role == Role.User && !vm.isRegistered && !vm.hasAdminProfile) {
+            // no camper profile to use yet, so make one first
+            registeringCamper = true
+            nav.navigate(Routes.REGISTER)
+            return
+        }
+        vm.role = role
+        when (role) {
+            Role.Owner -> vm.ensureOwner()
+            Role.User -> vm.ensureEntrant()
+            Role.Admin -> Unit
+        }
+        nav.enterRole(role, vm.isRegistered || vm.hasAdminProfile)
+    }
     fun openMap(site: Campsite) {
         if (!context.openExternal("geo:0,0?q=" + Uri.encode(site.location.ifBlank { site.name }))) toast("No map app found")
     }
@@ -205,32 +234,99 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
         }
         context.startActivity(Intent.createChooser(send, "Export notifications"))
     }
+    // goes where a notification's link points, from a feed or from a push
+    fun openNotification(n: AppNotification, asOwner: Boolean = n.forOwner) {
+        vm.markRead(listOf(n))
+        if (asOwner) {
+            when (n.target) {
+                NotificationTarget.CHAT ->
+                    if (n.senderId.isNotBlank()) nav.navigate(Routes.ownerChat(n.campsiteId, n.senderId))
+                NotificationTarget.OWNER_RESERVATIONS -> nav.switchOwnerTab(OwnerTab.Reservations)
+                NotificationTarget.OWNER_LOTTERIES -> nav.switchOwnerTab(OwnerTab.Lotteries)
+                else -> nav.switchOwnerTab(OwnerTab.Campsites)
+            }
+            return
+        }
+        when (n.target) {
+            NotificationTarget.CHOOSE_DATES -> {
+                val offer = vm.bookingOffers.firstOrNull { it.entryFor(vm.deviceId)?.campsiteId == n.campsiteId }
+                nav.navigate(Routes.reservations(offer?.id))
+            }
+            NotificationTarget.CHAT -> nav.navigate(Routes.chat(n.campsiteId))
+            NotificationTarget.CAMPSITE_LOTTERY -> nav.navigate(Routes.campsite(n.campsiteId, lotteryTab = true))
+            NotificationTarget.MY_RESERVATIONS -> nav.switchTab(TopLevelTab.Reservations)
+            NotificationTarget.MY_LOTTERIES -> nav.switchTab(TopLevelTab.Lotteries)
+            NotificationTarget.BROWSE -> nav.switchTab(TopLevelTab.Browse)
+            else -> Unit
+        }
+    }
+    // a tapped push opens the feed it belongs to, then its link
+    LaunchedEffect(tappedNotification) {
+        val n = tappedNotification ?: return@LaunchedEffect
+        val role = if (n.forOwner) Role.Owner else Role.User
+        if (vm.role != role) enterAs(role)
+        if (role == Role.Owner || vm.isRegistered || vm.hasAdminProfile) {
+            nav.navigate(if (n.forOwner) Routes.OWNER_NOTIFICATIONS else Routes.NOTIFICATIONS)
+            openNotification(n)
+        }
+        onTappedNotificationShown()
+    }
 
     Scaffold(
         containerColor = CortexTheme.colors.surfaceBase,
         contentWindowInsets = WindowInsets(0),
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            when {
-                showUserBar && vm.role != Role.Admin -> CortexBottomBar(selected = tabFor(route), onSelect = { nav.switchTab(it) })
-                showOwnerBar -> OwnerBottomBar(selected = ownerTabFor(route), onSelect = { nav.switchOwnerTab(it) })
+            val userBar = showUserBar && vm.role != Role.Admin
+            Column {
+                if (vm.hasAdminProfile && vm.role != Role.Admin && (userBar || showOwnerBar)) {
+                    AdminModeBar(role = vm.role, onBackToAdmin = { enterAs(Role.Admin) })
+                }
+                when {
+                    userBar -> CortexBottomBar(selected = tabFor(route), onSelect = { nav.switchTab(it) })
+                    showOwnerBar -> OwnerBottomBar(selected = ownerTabFor(route), onSelect = { nav.switchOwnerTab(it) })
+                }
             }
         },
     ) { inner ->
-      CompositionLocalProvider(LocalRoleSwitcher provides if (BuildConfig.DEBUG) ({ showRolePicker = true }) else null) {
+      CompositionLocalProvider(LocalRoleSwitcher provides if (BuildConfig.DEBUG || vm.hasAdminProfile) ({ showRolePicker = true }) else null) {
         NavHost(
             navController = nav,
             startDestination = startDestination,
             modifier = Modifier.padding(bottom = inner.calculateBottomPadding()),
         ) {
+            composable(Routes.WELCOME) {
+                WelcomeScreen(
+                    hasAccount = vm.canLogIn,
+                    onRegisterClick = { nav.navigate(Routes.REGISTER) },
+                    onLoginClick = {
+                        nav.navigate(Routes.LOGIN_ROLE) {
+                            popUpTo(Routes.WELCOME) { inclusive = true }
+                        }
+                    }
+                )
+            }
             composable(Routes.REGISTER) {
                 RegisterScreen(
-                    onRegister = { name, email, phone ->
-                        vm.register(name, email, phone)
-                        nav.navigate(Routes.BROWSE) { popUpTo(Routes.REGISTER) { inclusive = true } }
+                    onRegister = { name, email, phone, image ->
+                        vm.register(name, email, phone, image, onImageError = { toast(it) })
+                        if (registeringCamper) {
+                            // they already picked Camper on role select, so go straight in
+                            registeringCamper = false
+                            vm.role = Role.User
+                            nav.enterRole(Role.User, registered = true)
+                        } else {
+                            // new accounts pick their role, just like logging in
+                            nav.navigate(Routes.LOGIN_ROLE) { popUpTo(Routes.WELCOME) { inclusive = true } }
+                        }
                     },
-                    onPolicy = { /* TODO: open the policy & guidelines page */ },
-                    onEditAvatar = { /* TODO: pick and upload a profile picture */ },
+                )
+            }
+            composable(Routes.LOGIN_ROLE) {
+                LoginRoleScreen(
+                    roles = vm.availableRoles,
+                    onSelectRole = { selectedRole -> enterAs(selectedRole) },
+                    onBack = { nav.popBackStack() },
                 )
             }
             composable(Routes.BROWSE) {
@@ -260,8 +356,7 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
                     onMessageOwner = { nav.navigate(Routes.chat(it.campsiteId)) },
                     onCancel = { vm.cancelReservation(it) { error -> toast(error ?: "Reservation cancelled") } },                    onChooseDates = { chooseFor = it.id },
                     onDecline = { vm.declineOffer(it) { error -> toast(error ?: "Offer declined") } },
-                    onRate = { r, stars -> vm.rate(r, stars) },
-                )
+                    onRate = { r, stars -> vm.rate(r, stars) { error -> toast(error ?: "Thanks for rating your stay") } },                )
                 chooseFor?.let { id ->
                     val lottery = vm.bookingOffers.firstOrNull { it.id == id }
                     // a multi-campsite win asks which campsite first; a single-campsite lottery skips that step
@@ -342,19 +437,32 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
                     onEditProfile = { nav.navigate(Routes.EDIT_PROFILE) },
                     onDeleteProfile = {
                         vm.deleteProfile()
-                        nav.navigate(Routes.REGISTER) { popUpTo(0) { inclusive = true } }
+                        nav.navigate(Routes.WELCOME) { popUpTo(0) { inclusive = true } } // user is taken back to the welcome page after choosing to delete profile
                     },
-                    onPolicy = { /* TODO: open the policy & guidelines page */ },
                     onHelp = { /* TODO: open the help docs */ },
                 )
             }
             composable(Routes.EDIT_PROFILE) {
                 val entrant = vm.entrant ?: return@composable
+                var saving by remember { mutableStateOf(false) }
                 EditProfileScreen(
                     entrant = entrant,
-                    onSave = { name, email, phone -> vm.updateProfile(name, email, phone); nav.popBackStack(); toast("Profile updated") },
+                    saving = saving,
+                    onSave = { name, email, phone, image ->
+                        saving = true
+                        vm.updateProfile(
+                            name, email, phone, image,
+                            onSaved = {
+                                toast("Profile updated")
+                                nav.popBackStack(Routes.EDIT_PROFILE, inclusive = true)
+                            },
+                            onError = { message ->
+                                saving = false
+                                toast(message)
+                            },
+                        )
+                    },
                     onCancel = { nav.popBackStack() },
-                    onEditAvatar = { /* TODO: pick and upload a profile picture */ },
                 )
             }
             composable(Routes.NOTIFICATIONS) {
@@ -364,21 +472,7 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
                     onBack = { nav.popBackStack() },
                     onMarkAllRead = { vm.markRead(notifications) },
                     onDownloadCsv = { shareCsv(notifications) },
-                    onNotificationClick = { n ->
-                        vm.markRead(listOf(n))
-                        when (n.target) {
-                            NotificationTarget.CHOOSE_DATES -> {
-                                val offer = vm.bookingOffers.firstOrNull { it.entryFor(vm.deviceId)?.campsiteId == n.campsiteId }
-                                nav.navigate(Routes.reservations(offer?.id))
-                            }
-                            NotificationTarget.CHAT -> nav.navigate(Routes.chat(n.campsiteId))
-                            NotificationTarget.CAMPSITE_LOTTERY -> nav.navigate(Routes.campsite(n.campsiteId, lotteryTab = true))
-                            NotificationTarget.MY_RESERVATIONS -> nav.switchTab(TopLevelTab.Reservations)
-                            NotificationTarget.MY_LOTTERIES -> nav.switchTab(TopLevelTab.Lotteries)
-                            NotificationTarget.BROWSE -> nav.switchTab(TopLevelTab.Browse)
-                            else -> Unit
-                        }
-                    },
+                    onNotificationClick = { openNotification(it) },
                 )
             }
             // TODO: to be moved from campsite page to reservations page
@@ -463,7 +557,7 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
                     onCreate = { nav.navigate(Routes.ownerLotteryForm()) },
                     onUpdate = { nav.navigate(Routes.ownerLotteryForm(it.id)) },
                     onNotifyWaitlist = { vm.notifyWaitlist(it); toast("Notified ${it.waitlist.size} waitlisted users") },
-                    onRunDraw = { vm.runDraw(it); toast("Draw complete") },
+                    onRunDraw = { vm.runDraw(it) { error -> toast(error ?: "Drawing now. Results will show in a few seconds.") } },
                 )
             }
             composable(Routes.OWNER_LOTTERY_FORM, arguments = listOf(navArgument("id") { type = NavType.StringType; nullable = true; defaultValue = null })) { e ->
@@ -503,16 +597,8 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
                     onBack = { nav.popBackStack() },
                     onMarkAllRead = { vm.markRead(received) },
                     onDownloadCsv = { shareCsv(vm.ownerSent) },
-                    onClick = { n ->
-                        vm.markRead(listOf(n))
-                        when (n.target) {
-                            NotificationTarget.CHAT ->
-                                if (n.senderId.isNotBlank()) nav.navigate(Routes.ownerChat(n.campsiteId, n.senderId))
-                            NotificationTarget.OWNER_RESERVATIONS -> nav.switchOwnerTab(OwnerTab.Reservations)
-                            NotificationTarget.OWNER_LOTTERIES -> nav.switchOwnerTab(OwnerTab.Lotteries)
-                            else -> nav.switchOwnerTab(OwnerTab.Campsites)
-                        }
-                    },
+                    // the sent tab lists entrants' notifications, which still open owner screens
+                    onClick = { openNotification(it, asOwner = true) },
                 )
             }
             composable(
@@ -540,8 +626,9 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
                     onUsers = { nav.navigate(Routes.ADMIN_USERS) },
                     onImages = { nav.navigate(Routes.ADMIN_IMAGES) },
                     onLogs = { nav.navigate(Routes.ADMIN_LOGS) },
-                    onSpoofUser = { vm.role = Role.User; nav.navigate(homeFor(Role.User, vm.isRegistered)); toast("Viewing as camper") },
-                    onSpoofOwner = { vm.role = Role.Owner; vm.ensureOwner(); nav.navigate(Routes.OWNER_CAMPSITES); toast("Viewing as owner") },
+                    onReviews = { nav.navigate(Routes.ADMIN_REVIEWS) },
+                    onSpoofUser = { enterAs(Role.User); toast("Using your admin profile as a camper") },
+                    onSpoofOwner = { enterAs(Role.Owner); toast("Using your admin profile as a campsite owner") },
                 )
             }
             composable(Routes.ADMIN_CAMPSITES) {
@@ -559,17 +646,31 @@ fun CortexApp(vm: CortexViewModel = viewModel()) {
             composable(Routes.ADMIN_IMAGES) {
                 AdminImagesScreen(vm.campsitesWithImages, vm::ownerName, onBack = { nav.popBackStack() }, onDelete = { campsite -> vm.deleteImage(campsite) { error -> toast(error ?: "Image deleted") } })
             }
+            composable(Routes.ADMIN_REVIEWS) {
+                com.example.cortex_camping.ui.screens.admin.AdminReviewsScreen(
+                    reservations = vm.ratedReservations,
+                    campsite = vm::campsite,
+                    entrantName = vm::entrantName,
+                    onBack = { nav.popBackStack() },
+                    onDelete = { reservation ->
+                        vm.deleteReview(reservation) { error -> toast(error ?: "Rating removed") }
+                    },
+                )
+            }
             composable(Routes.ADMIN_LOGS) { AdminLogsScreen(vm.communicationLogs, onBack = { nav.popBackStack() }) }
         }
       }
     }
     if (showRolePicker) {
-        RolePickerDialog(current = vm.role, onPick = { role ->
-            showRolePicker = false
-            vm.role = role
-            if (role == Role.Owner) vm.ensureOwner()
-            nav.enterRole(role, vm.isRegistered)
-        }, onDismiss = { showRolePicker = false })
+        RolePickerDialog(
+            current = vm.role,
+            roles = if (BuildConfig.DEBUG) Role.entries else vm.availableRoles,
+            onPick = { role ->
+                showRolePicker = false
+                enterAs(role)
+            },
+            onDismiss = { showRolePicker = false },
+        )
     }
 }
 
@@ -600,14 +701,31 @@ private fun CampsitePickerDialog(
 }
 
 @Composable
-private fun RolePickerDialog(current: Role, onPick: (Role) -> Unit, onDismiss: () -> Unit) {
+private fun RolePickerDialog(current: Role, roles: List<Role>, onPick: (Role) -> Unit, onDismiss: () -> Unit) {
     InfoDialog("Switch role", onDismiss) {
-        Role.entries.forEach { role ->
+        roles.forEach { role ->
             CortexButton(
                 role.label + if (role == current) " (current)" else "", { onPick(role) },
                 Modifier.fillMaxWidth(),
                 style = if (role == current) CortexButtonStyle.Filled else CortexButtonStyle.OutlinedBrand,
             )
         }
+    }
+}
+
+@Composable
+private fun AdminModeBar(role: Role, onBackToAdmin: () -> Unit) {
+    val colors = CortexTheme.colors
+    Row(
+        Modifier.fillMaxWidth().background(colors.surfaceDefault).padding(start = 16.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "Admin profile · ${role.label}",
+            style = MaterialTheme.typography.labelLarge,
+            color = colors.textSecondary,
+            modifier = Modifier.weight(1f),
+        )
+        CortexButton("Admin dashboard", onBackToAdmin, style = CortexButtonStyle.Text, size = CortexButtonSize.XSmall)
     }
 }

@@ -14,8 +14,8 @@ data class Reservation(
     val bookingId: String = "",
     val campsiteId: String = "",
     val userId: String = "",
-    val checkIn: LocalDate,
-    val checkOut: LocalDate,
+    val checkIn: LocalDate = LocalDate.now(),
+    val checkOut: LocalDate = LocalDate.now(),
     val guests: Int = 1,
     val status: ReservationStatus = ReservationStatus.CONFIRMED,
     val rating: Int = 0, // 0 means the entrant hasn't rated the stay yet
@@ -29,4 +29,20 @@ data class Reservation(
         // this function returns true if two reservations overlap, otherwise false
         return checkIn.isBefore(other.checkOut) && checkOut.isAfter(other.checkIn)
     }
+
+    fun isActive(today: LocalDate = LocalDate.now()): Boolean =
+        (status == ReservationStatus.CONFIRMED || status == ReservationStatus.PENDING) &&
+                !checkOut.isBefore(today)
+
+    // finished or cancelled reservations, displayed in the history list
+    fun isPast(today: LocalDate = LocalDate.now()): Boolean =
+        status == ReservationStatus.CANCELLED || checkOut.isBefore(today)
 }
+
+    // list of active reservations, soonest first
+    fun List<Reservation>.upcoming(today: LocalDate = LocalDate.now()) =
+        filter { it.isActive(today) }.sortedBy { it.checkIn }
+
+    // finished or cancelled reservations, most recent first
+    fun List<Reservation>.past(today: LocalDate = LocalDate.now()) =
+        filter { it.isPast(today) }.sortedByDescending { it.checkOut }
