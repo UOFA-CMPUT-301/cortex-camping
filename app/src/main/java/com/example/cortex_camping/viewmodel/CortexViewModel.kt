@@ -470,6 +470,28 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    // Send a notification to all users in a waitlist that have lost a lottery
+    fun notifyLotteryLost(lottery: Lottery) {
+        lottery.waitlist.filter { it.userId.isNotBlank() }.distinctBy { it.userId }.forEach { entry ->
+            val isWinner = lottery.hasWon(entry.userId)
+            if (!isWinner) {
+                notificationRepository.send(
+                    AppNotification(
+                        recipientId = entry.userId,
+                        senderId = deviceId,
+                        kind = NotificationKind.LOTTERY_UPDATED,
+                        title = "Lottery lost",
+                        body = "You have lost the lottery ${lottery.name}.",
+                        link = "View lottery →",
+                        campsiteId = entry.campsiteId,
+                        target = NotificationTarget.CAMPSITE_LOTTERY,
+                        forOwner = false
+                    )
+                )
+            }
+        }
+    }
+
     fun runDraw(lottery: Lottery, onResult: (String?) -> Unit = {}) {
         lotteryRepository.drawNow(lottery.id, onResult)
     }

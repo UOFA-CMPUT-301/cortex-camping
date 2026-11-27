@@ -12,6 +12,7 @@ val LOTTERY_TIME_ZONE: ZoneId = ZoneId.of("America/Edmonton")
 // waitlistCapacity value for a waitlist that anyone can join
 const val NO_WAITLIST_LIMIT = -1
 
+// current status of a lottery; whether it is finalized or not
 enum class LotteryStatus(val label: String) {
     ONGOING("Ongoing"),
     FINALIZED("Finalized") // the draw has happened
