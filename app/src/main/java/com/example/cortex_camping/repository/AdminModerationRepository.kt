@@ -109,7 +109,7 @@ class AdminModerationRepository {
             check(campsite.get("imageUrl") == expectedImage) {
                 "The image changed. Review the new image before deleting it."
             }
-            transaction.update(target, "imageUrl", null)
+            transaction.update(target, mapOf("rating" to 0, "review" to ""))
             null
         }.addOnSuccessListener { onResult(null) }
             .addOnFailureListener { onResult(it.message ?: "Image deletion failed. Please retry.") }

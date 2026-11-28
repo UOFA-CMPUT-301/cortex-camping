@@ -55,8 +55,10 @@ class ReservationRejectionTest {
     @Test
     fun `a rejected stay can't be rated`() {
         assertEquals(
-            "You can't rate a rejected stay.",
-            CampsiteRating.problem(rejected.copy(checkOut = today.minusDays(1)), 5, today)
+            "You can't review a rejected stay.",
+            CampsiteRating.problem(
+                rejected.copy(checkOut = today.minusDays(1)), 5, "", today, rejected.userId
+            )
         )
     }
 

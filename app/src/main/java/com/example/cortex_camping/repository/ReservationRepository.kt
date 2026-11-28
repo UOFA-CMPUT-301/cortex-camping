@@ -172,18 +172,22 @@ class ReservationRepository {
      * @param stars the rating, from 1 to 5
      * @param onResult called with null if it was saved, or an error message
      */
-    fun rate(reservation: Reservation, stars: Int, onResult: (String?) -> Unit = {}) {
+    fun rate(reservation: Reservation, userId: String, stars: Int, review: String, onResult: (String?) -> Unit = {}) {
         val reservationDoc = reservationsRef.document(reservation.bookingId)
         val campsiteDoc = db.collection("campsite").document(reservation.campsiteId)
+        val text = review.trim()
         db.runTransaction { transaction ->
             val stay = transaction.get(reservationDoc)
             val campsite = transaction.get(campsiteDoc)
-            check(stay.exists()) { "That reservation no longer exists." }
-            check(stay.get("status") == ReservationStatus.CONFIRMED.name) {
-                "Only confirmed stays can be rated."
-            }
+            val data = stay.data
+                ?: throw IllegalStateException("No reservation document has the id ${reservation.bookingId}.")
+            val saved = fromMap(data)
+                ?: throw IllegalStateException("That reservation's data couldn't be read.")
+            check(saved.userId == userId) { "You can only review your own stays." }
+            check(saved.status == ReservationStatus.CONFIRMED) { "Only confirmed stays can be reviewed." }
+            check(!saved.checkOut.isAfter(LocalDate.now())) { "You can review this stay after you check out." }
+            check(text.length <= CampsiteRating.MAX_REVIEW_LENGTH) { "That review is too long." }
             check(campsite.exists()) { "That campsite no longer exists." }
-
             val previous = (stay.get("rating") as? Number)?.toInt() ?: 0
             val summary = CampsiteRating.update(
                 average = (campsite.get("rating") as? Number)?.toDouble() ?: 0.0,
@@ -226,7 +230,8 @@ class ReservationRepository {
             "guests" to reservation.guests,
             "status" to reservation.status.name,
             "rating" to reservation.rating,
-            "rejectionReason" to reservation.rejectionReason
+            "rejectionReason" to reservation.rejectionReason,
+            "review" to reservation.review
         )
 
         /**
@@ -249,7 +254,8 @@ class ReservationRepository {
                         ?.let { ReservationStatus.valueOf(it) }
                         ?: ReservationStatus.CONFIRMED,
                     rating = (data["rating"] as? Number)?.toInt() ?: 0,
-                    rejectionReason = data["rejectionReason"] as? String ?: ""
+                    rejectionReason = data["rejectionReason"] as? String ?: "",
+                    review = data["review"] as? String ?: ""
                 )
             } catch (e: Exception) {
                 null

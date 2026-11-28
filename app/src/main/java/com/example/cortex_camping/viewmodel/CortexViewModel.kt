@@ -44,6 +44,7 @@ import com.example.cortex_camping.model.upcoming
 import com.example.cortex_camping.model.Admin
 import com.example.cortex_camping.model.AdminRepository
 import com.example.cortex_camping.repository.CampsiteOwnerRepository
+import com.example.cortex_camping.model.CampsiteReview
 
 enum class Role(val label: String) { User("Camper"), Owner("Campsite owner"), Admin("Admin") }
 
@@ -284,15 +285,20 @@ class CortexViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     // saves the rating on the reservation and updates the campsite's average (US 01.13.01)
-    fun rate(reservation: Reservation, stars: Int, onResult: (String?) -> Unit = {}) {
-        val problem = CampsiteRating.problem(reservation, stars, LocalDate.now())
-        if (problem != null) {
-            onResult(problem)
-            return
-        }
-        reservationRepository.rate(reservation, stars, onResult)
+    fun rate(reservation: Reservation, stars: Int, review: String = "", onResult: (String?) -> Unit = {}) {
+        val current = reservationRepository.reservations.firstOrNull { it.bookingId == reservation.bookingId }
+        if (current == null) { onResult("We couldn't find that reservation."); return }
+        val problem = CampsiteRating.problem(current, stars, review, LocalDate.now(), deviceId)
+        if (problem != null) { onResult(problem); return }
+        reservationRepository.rate(current, deviceId, stars, review, onResult)
     }
 
+    // reviews shown on a campsite's page, newest stay first
+    fun reviewsFor(campsiteId: String): List<CampsiteReview> =
+        reservationRepository.reservations
+            .filter { it.campsiteId == campsiteId && it.rating != 0 }
+            .sortedByDescending { it.checkOut }
+            .map { CampsiteReview(it.bookingId, entrantName(it.userId), it.rating, it.review, it.checkOut) }
     // Lotteries (entrant)
 
     // lotteries the entrant has entered

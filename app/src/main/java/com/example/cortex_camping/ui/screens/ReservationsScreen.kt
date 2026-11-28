@@ -33,6 +33,7 @@ import com.example.cortex_camping.ui.components.ReservationCard
 import com.example.cortex_camping.ui.components.ResultsHeading
 import com.example.cortex_camping.ui.theme.CortexTheme
 import com.example.cortex_camping.viewmodel.Role
+import com.example.cortex_camping.ui.components.ReviewDialog
 
 /** Figma frames "My reservations" and "My Reservations - Past" */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -52,12 +53,13 @@ fun ReservationsScreen(
     onCancel: (Reservation) -> Unit,
     onChooseDates: (Lottery) -> Unit,
     onDecline: (Lottery) -> Unit,
-    onRate: (Reservation, Int) -> Unit,
+    onRate: (Reservation, Int, String) -> Unit,
     contentPadding: PaddingValues = PaddingValues(),
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var pendingCancel by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingDecline by rememberSaveable { mutableStateOf<String?>(null) }
+    var reviewing by rememberSaveable { mutableStateOf<String?>(null) }
     val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val count = if (tab == 0) upcoming.size + offers.size else past.size
 
@@ -98,7 +100,11 @@ fun ReservationsScreen(
             } else {
                 items(past, key = { it.bookingId }) { r ->
                     val site = campsite(r.campsiteId) ?: return@items
-                    PastReservationCard(r, site, onRate = { onRate(r, it) })
+                    PastReservationCard(
+                        r, site,
+                        onRate = { stars -> onRate(r, stars, r.review) },
+                        onReview = { reviewing = r.bookingId },
+                    )
                 }
             }
         }
@@ -128,6 +134,18 @@ fun ReservationsScreen(
             destructive = true,
             onConfirm = { onDecline(lottery); pendingDecline = null },
             onDismiss = { pendingDecline = null },
+        )
+    }
+
+    reviewing?.let { id ->
+        val r = past.firstOrNull { it.bookingId == id }
+        if (r == null) { reviewing = null; return@let }
+        ReviewDialog(
+            campsiteName = campsite(r.campsiteId)?.name ?: "this campsite",
+            initialStars = r.rating,
+            initialText = r.review,
+            onSubmit = { stars, text -> onRate(r, stars, text); reviewing = null },
+            onDismiss = { reviewing = null },
         )
     }
 }
