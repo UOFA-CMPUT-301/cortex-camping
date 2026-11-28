@@ -85,6 +85,8 @@ import com.example.cortex_camping.ui.theme.CortexTheme
 import com.example.cortex_camping.viewmodel.CortexViewModel
 import com.example.cortex_camping.viewmodel.Role
 import kotlinx.coroutines.launch
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 
 object Routes {
     const val WELCOME = "welcome"
@@ -227,14 +229,24 @@ fun CortexApp(
     LaunchedEffect(vm.adminError) {
         vm.adminError?.let { snackbar.showSnackbar(it) }
     }
-    fun shareCsv(list: List<AppNotification>) {
-        val send = Intent(Intent.ACTION_SEND).apply {
-            type = "text/csv"
-            putExtra(Intent.EXTRA_SUBJECT, "Cortex Camping notifications")
-            putExtra(Intent.EXTRA_TEXT, vm.notificationsCsv(list))
+    // the CSV waiting to be written once the user picks where to save it
+    var pendingCsv by rememberSaveable { mutableStateOf("") }
+    val saveCsv = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+        if (uri != null) {
+            try {
+                context.contentResolver.openOutputStream(uri)?.use { it.write(("\uFEFF" + pendingCsv).toByteArray()) }
+                toast("Notifications saved")
+            } catch (e: Exception) {
+                toast("Couldn't save the CSV file")
+            }
         }
-        context.startActivity(Intent.createChooser(send, "Export notifications"))
     }
+    // asks where to save the notifications, then writes them there as a CSV file
+    fun downloadCsv(list: List<AppNotification>) {
+        pendingCsv = vm.notificationsCsv(list)
+        saveCsv.launch("cortex-notifications.csv")
+    }
+
     // goes where a notification's link points, from a feed or from a push
     fun openNotification(n: AppNotification, asOwner: Boolean = n.forOwner) {
         vm.markRead(listOf(n))
@@ -359,9 +371,11 @@ fun CortexApp(
                     onProfileClick = { nav.navigate(Routes.PROFILE) },
                     onNotificationsClick = { nav.navigate(Routes.NOTIFICATIONS) },
                     onMessageOwner = { nav.navigate(Routes.chat(it.campsiteId)) },
-                    onCancel = { vm.cancelReservation(it) { error -> toast(error ?: "Reservation cancelled") } },                    onChooseDates = { chooseFor = it.id },
+                    onCancel = { vm.cancelReservation(it) { error -> toast(error ?: "Reservation cancelled") } },
+                    onChooseDates = { chooseFor = it.id },
                     onDecline = { vm.declineOffer(it) { error -> toast(error ?: "Offer declined") } },
-                    onRate = { r, stars -> vm.rate(r, stars) { error -> toast(error ?: "Thanks for rating your stay") } },                )
+                    onRate = { r, stars -> vm.rate(r, stars) { error -> toast(error ?: "Thanks for rating your stay") } },
+                    )
                 chooseFor?.let { id ->
                     val lottery = vm.bookingOffers.firstOrNull { it.id == id }
                     // a multi-campsite win asks which campsite first; a single-campsite lottery skips that step
@@ -479,7 +493,7 @@ fun CortexApp(
                     notifications = notifications,
                     onBack = { nav.popBackStack() },
                     onMarkAllRead = { vm.markRead(notifications) },
-                    onDownloadCsv = { shareCsv(notifications) },
+                    onDownloadCsv = { downloadCsv(notifications) },
                     onNotificationClick = { openNotification(it) },
                 )
             }
@@ -630,7 +644,7 @@ fun CortexApp(
                     received = received, sent = vm.ownerSent,
                     onBack = { nav.popBackStack() },
                     onMarkAllRead = { vm.markRead(received) },
-                    onDownloadCsv = { shareCsv(vm.ownerSent) },
+                    onDownloadCsv = { downloadCsv(vm.ownerSent) },
                     // the sent tab lists entrants' notifications, which still open owner screens
                     onClick = { openNotification(it, asOwner = true) },
                 )
