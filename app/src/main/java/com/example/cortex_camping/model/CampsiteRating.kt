@@ -33,10 +33,10 @@ object CampsiteRating {
     fun problem(reservation: Reservation, stars: Int, review: String, today: LocalDate, userId: String): String? {
         if (reservation.userId != userId) return "You can only review stays you booked."
         if (stars !in 1..5) return "Pick between 1 and 5 stars."
-        if (review.trim().length > MAX_REVIEW_LENGTH) return "Reviews can only be up to $MAX_REVIEW_LENGTH characters."
-        if (reservation.status == ReservationStatus.CANCELLED) return "You can't rate a cancelled stay."
-        if (reservation.status == ReservationStatus.REJECTED) return "You can't rate a rejected stay."
-        if (reservation.checkOut.isAfter(today)) return "You can rate this stay after you check out."
+        if (review.trim().length > MAX_REVIEW_LENGTH) return "Reviews can be up to $MAX_REVIEW_LENGTH characters."
+        if (reservation.status == ReservationStatus.CANCELLED) return "You can't review a cancelled stay."
+        if (reservation.status == ReservationStatus.REJECTED) return "You can't review a rejected stay."
+        if (reservation.checkOut.isAfter(today)) return "You can review this stay after you check out."
         return null
     }
 
