@@ -58,6 +58,7 @@ import com.example.cortex_camping.ui.screens.WelcomeScreen
 import com.example.cortex_camping.ui.screens.LoginRoleScreen
 import com.example.cortex_camping.ui.screens.BrowseScreen
 import com.example.cortex_camping.ui.screens.CampsiteDetailsScreen
+import com.example.cortex_camping.ui.screens.CampsiteReviewsScreen
 import com.example.cortex_camping.ui.screens.ChatScreen
 import com.example.cortex_camping.ui.screens.ChooseDatesDialog
 import com.example.cortex_camping.ui.screens.EditProfileScreen
@@ -98,6 +99,7 @@ object Routes {
     const val EDIT_PROFILE = "profile/edit"
     const val NOTIFICATIONS = "notifications"
     const val CHAT = "chat/{campsiteId}"
+    const val CAMPSITE_REVIEWS = "campsite/{id}/reviews"
 
     const val OWNER_CAMPSITES = "owner/campsites"
     const val OWNER_CAMPSITE_FORM = "owner/campsite?id={id}"
@@ -122,6 +124,7 @@ object Routes {
     fun ownerCampsiteDetails(id: String) = "owner/campsite/details/$id"
     fun ownerLotteryForm(id: String? = null) = "owner/lottery" + (id?.let { "?id=$it" } ?: "")
     fun ownerChat(campsiteId: String, entrantId: String) = "owner/chat/$campsiteId/$entrantId"
+    fun campsiteReviews(id: String) = "campsite/$id/reviews"
 }
 
 private fun homeFor(role: Role, registered: Boolean) = when (role) {
@@ -361,7 +364,7 @@ fun CortexApp(
                     onMessageOwner = { nav.navigate(Routes.chat(it.campsiteId)) },
                     onCancel = { vm.cancelReservation(it) { error -> toast(error ?: "Reservation cancelled") } },                    onChooseDates = { chooseFor = it.id },
                     onDecline = { vm.declineOffer(it) { error -> toast(error ?: "Offer declined") } },
-                    onRate = { r, stars -> vm.rate(r, stars) { error -> toast(error ?: "Thanks for rating your stay") } },                )
+                    onRate = { r, stars, review -> vm.rate(r, stars, review) { error -> toast(error ?: "Thanks for reviewing your stay") } },        )
                 chooseFor?.let { id ->
                     val lottery = vm.bookingOffers.firstOrNull { it.id == id }
                     // a multi-campsite win asks which campsite first; a single-campsite lottery skips that step
@@ -431,10 +434,18 @@ fun CortexApp(
                     onOpenMap = { openMap(site) },
                     onOpenRules = { openRules(site) },
                     onMessageHost = { nav.navigate(Routes.chat(id)) },
-                    onReviews = { /* TODO: show the campsite's reviews */ },
+                    onReviews = { nav.navigate(Routes.campsiteReviews(id)) },
                     onLotteryDetails = { /* TODO: show the lottery's full details */ },
                     initialTab = entry.arguments?.getInt("tab") ?: 0,
                 )
+            }
+            composable(
+                Routes.CAMPSITE_REVIEWS,
+                arguments = listOf(navArgument("id") { type = NavType.StringType }),
+            ) { entry ->
+                val id = entry.arguments?.getString("id").orEmpty()
+                val site = vm.campsite(id) ?: return@composable
+                CampsiteReviewsScreen(site, vm.reviewsFor(id), onBack = { nav.popBackStack() })
             }
             composable(Routes.PROFILE) {
                 val entrant = vm.entrant ?: return@composable

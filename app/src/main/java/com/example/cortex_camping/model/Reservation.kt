@@ -20,8 +20,10 @@ data class Reservation(
     val guests: Int = 1,
     val status: ReservationStatus = ReservationStatus.CONFIRMED,
     val rating: Int = 0, // 0 means the entrant hasn't rated the stay yet
+    val review: String = "", // optional written review, will be blank if the user only leaves stars
     val lotteryId: String = "", // the lottery this stay was won in, blank if it wasn't from a lottery
     val rejectionReason: String = "" // the owner's optional reason, only set when the reservation was rejected
+
 ) {
     // cancelled by the camper or rejected by the owner: the nights are free again
     @get:Exclude

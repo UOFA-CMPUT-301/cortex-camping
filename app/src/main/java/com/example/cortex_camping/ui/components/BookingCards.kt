@@ -93,7 +93,8 @@ fun BookingOfferCard(
 fun PastReservationCard(
     reservation: Reservation,
     campsite: Campsite,
-    onRate: (Int) -> Unit,
+    onRate: (Int) -> Unit,      // quick star tap, keeps any existing review text
+    onReview: () -> Unit,       // opens the review dialog
     modifier: Modifier = Modifier,
 ) {
     CortexOutlinedCard(modifier) {
@@ -114,7 +115,22 @@ fun PastReservationCard(
                     "You cancelled this stay", style = MaterialTheme.typography.bodySmall,
                     color = CortexTheme.colors.textSecondary, modifier = Modifier.padding(top = 2.dp),
                 )
-                else -> StarRatingRow(rating = reservation.rating, onRate = onRate, modifier = Modifier.padding(top = 2.dp))
+                else -> {
+                    StarRatingRow(rating = reservation.rating, onRate = onRate, modifier = Modifier.padding(top = 2.dp))
+                    if (reservation.review.isNotBlank()) {
+                        Text(
+                            reservation.review, style = MaterialTheme.typography.bodySmall,
+                            color = CortexTheme.colors.textSecondary, modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
+                    // the repository only accepts confirmed stays, so only offer it for those
+                    if (reservation.status == ReservationStatus.CONFIRMED) {
+                        InlineLink(
+                            if (reservation.rating == 0) "Write a review ›" else "Edit your review ›",
+                            onReview, Modifier.padding(top = 4.dp),
+                        )
+                    }
+                }
             }
         }
     }
